@@ -120,3 +120,19 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Custom Leaflet Tooltip Styling */
+.leaflet-tooltip.leaflet-tooltip-custom {
+  @apply bg-background text-foreground border border-border rounded-md shadow-lg px-3 py-1.5 text-sm;
+  /* Override leaflet defaults */
+  background-clip: padding-box;
+  white-space: nowrap;
+  opacity: 0; /* Start hidden for transition */
+  transition: opacity 0.2s ease-in-out; 
+}
+
+/* Make tooltip visible when Leaflet adds its internal classes */
+.leaflet-marker-icon:hover + .leaflet-tooltip.leaflet-tooltip-custom,
+.leaflet-tooltip.leaflet-tooltip-custom.leaflet-tooltip-visible {
+  opacity: 1;
+}

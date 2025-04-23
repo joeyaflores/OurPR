@@ -1,6 +1,6 @@
 "use client"; // Map will require client-side interaction
 
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet'; // Import Leaflet library itself
 import { Race } from '@/types/race'; // Import Race type
@@ -124,19 +124,17 @@ const MapLegend = () => {
           title="Show legend"
         >
           <div className="flex items-center gap-2">
-            <div className="flex -space-x-1">
-              {commonDistances.slice(0, 3).map((distance, i) => (
-                <span
-                  key={distance}
-                  className="w-3 h-3 rounded-full border-2 border-white"
-                  style={{ 
-                    backgroundColor: distanceColors[distance],
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                    zIndex: 3 - i
-                  }}
-                />
-              ))}
-            </div>
+            {commonDistances.slice(0, 3).map((distance, i) => (
+              <span
+                key={distance}
+                className="w-3 h-3 rounded-full border-2 border-white"
+                style={{ 
+                  backgroundColor: distanceColors[distance],
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                  zIndex: 3 - i
+                }}
+              />
+            ))}
             <span className="text-xs font-medium">Legend</span>
           </div>
         </button>
@@ -152,6 +150,7 @@ interface MapViewProps {
   hoveredRaceId: string | number | null;
   selectedRaceId: string | number | null;
   onRaceSelect: (id: string | number | null) => void;
+  onRaceHover: (id: string | number | null) => void;
   isLoading: boolean;
   error: string | null;
 }
@@ -190,7 +189,7 @@ const MapInteractionHandler: React.FC<{ selectedRaceId: string | number | null, 
 };
 
 // Update component signature to accept props
-export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceId, selectedRaceId, onRaceSelect, isLoading, error }) => {
+export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceId, selectedRaceId, onRaceSelect, onRaceHover, isLoading, error }) => {
   
   // Find the first race WITH valid coordinates for the default center
   const firstRaceWithCoords = races.find(r => r.lat != null && r.lng != null);
@@ -220,10 +219,24 @@ export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceI
               key={race.id}
               position={[race.lat!, race.lng!]} // Use non-null assertion as we filtered
               icon={icon}
-              zIndexOffset={isHovered ? 1000 : 0} 
+              zIndexOffset={isHovered ? 1000 : 0}
               eventHandlers={{
                 click: () => {
-                  onRaceSelect(race.id);
+                  // Toggle selection: if clicking the already selected marker, deselect it (null)
+                  const nextSelectedId = race.id === selectedRaceId ? null : race.id;
+                  onRaceSelect(nextSelectedId);
+                },
+                mouseover: (e: L.LeafletMouseEvent) => {
+                  onRaceHover(race.id);
+                  // Optional: Bring marker to front visually on hover (Leaflet specific)
+                  if (e.target && typeof (e.target as any).bringToFront === 'function') {
+                    (e.target as any).bringToFront();
+                  } else {
+                    console.warn("bringToFront not available on event target", e.target);
+                  }
+                },
+                mouseout: () => {
+                  onRaceHover(null);
                 },
               }}
             >
@@ -282,6 +295,15 @@ export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceI
                   )}
                 </div>
               </Popup>
+              {/* Add Tooltip for hover */}
+              <Tooltip 
+                direction="top" 
+                offset={[0, -10]}
+                // Use the custom class defined in globals.css 
+                className="leaflet-tooltip-custom"
+              >
+                <span>{race.name}</span>
+              </Tooltip>
             </Marker>
           );
         })}

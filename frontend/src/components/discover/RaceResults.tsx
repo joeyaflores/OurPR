@@ -27,6 +27,7 @@ interface RaceResultsProps {
   selectedRaceId: string | number | null; // Add selected ID prop
   isLoading: boolean; // Add loading state prop
   error: string | null; // Add error state prop
+  hoveredRaceId: string | number | null; // Add hoveredRaceId prop
 }
 
 // Action States for the button
@@ -65,7 +66,8 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
   onRaceSelect, 
   selectedRaceId, 
   isLoading, 
-  error 
+  error, 
+  hoveredRaceId
 }) => {
   const supabase = createClient();
   const [user, setUser] = useState<User | null>(null);
@@ -277,13 +279,21 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
             const buttonText = isInPlan ? "Remove from Plan" : "Add to Plan";
             const ButtonIcon = isInPlan ? Trash2 : PlusCircle;
 
+            // Determine if the card is hovered (via map marker or card itself)
+            const isHovered = race.id === hoveredRaceId;
+
             return (
               <motion.div // <-- Wrap each card container with motion.div
                 key={race.id}
                 variants={itemVariants}
+                whileHover={{ scale: 1.03, transition: { duration: 0.2 } }} // <-- Add whileHover effect
                 className={cn(
-                  "w-full max-w-sm cursor-pointer transition-all duration-200",
-                  isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "ring-0"
+                  "w-full max-w-sm cursor-pointer transition-all duration-200 rounded-lg", // Added rounded-lg here
+                  isSelected
+                    ? "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg"
+                    : isHovered // Apply different style if hovered but not selected
+                    ? "shadow-md bg-muted/30"
+                    : "ring-0 shadow-sm" // Default state
                 )}
                  // Move event handlers to the motion div
                 onMouseEnter={() => onRaceHover(race.id)}

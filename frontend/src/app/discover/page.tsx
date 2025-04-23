@@ -168,21 +168,21 @@ export default function DiscoverPage() {
            {/* 2. Map View - Pass fetched races and loading/error state */}
            <ClientMapWrapper
              className="min-h-[300px] h-[60vh] lg:h-auto lg:aspect-video relative"
-             // Pass fetched races instead of filtered mock races
-             races={races} 
+             races={races}
              isLoading={isLoading} // Pass loading state
              error={error} // Pass error state
              hoveredRaceId={hoveredRaceId}
              selectedRaceId={selectedRaceId}
              onRaceSelect={handleRaceSelect}
+             onRaceHover={setHoveredRaceId}
            />
 
            {/* 4. Race Results - Pass fetched races and loading/error state */}
            <RaceResults
-             // Pass fetched races instead of filtered mock races
              races={races}
              isLoading={isLoading} // Pass loading state
              error={error} // Pass error state
+             hoveredRaceId={hoveredRaceId}
              onRaceHover={setHoveredRaceId}
              onRaceSelect={handleRaceSelect}
              selectedRaceId={selectedRaceId}
