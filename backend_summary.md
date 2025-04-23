@@ -23,6 +23,7 @@ This document summarizes the key features and components implemented for the Our
 -   **Pydantic Models:** Defined data validation models for API requests/responses:
     -   `Race`, `RaceCreate`, `RaceUpdate` in `backend/app/models/race.py`.
     -   `UserPr`, `UserPrCreate`, `UserPrUpdate` in `backend/app/models/user_pr.py`.
+    -   `UserRacePlan`, `UserRacePlanCreate` in `backend/app/models/user_race_plan.py`.
 
 ## API Endpoints & Authentication
 
@@ -47,7 +48,13 @@ This document summarizes the key features and components implemented for the Our
     -   Includes prompt engineering to request JSON output from Gemini.
     -   Queries the Supabase `races` table based on the extracted filters.
     -   Returns matching races using the `Race` model.
--   **Routing:** All API routers (`races`, `user_prs`, `race_query`) are correctly included in the main FastAPI application (`backend/app/main.py`) with appropriate prefixes and tags.
+-   **User Race Plan Endpoints (`/api/users/me/plan`):**
+    -   Created in `backend/app/api/user_plans.py`.
+    -   Requires authentication for all operations.
+    -   **`GET /`**: Fetches a list of `race_id` (UUIDs) for races currently in the authenticated user's plan.
+    -   **`POST /`**: Adds a specified race (`race_id` in body) to the authenticated user's plan. Returns the created `UserRacePlan` record. Handles 409 conflict if the race is already in the plan.
+    -   **`DELETE /{race_id}`**: Removes the specified race (path parameter `race_id`) from the authenticated user's plan. Returns 204 No Content on success. Handles 404 Not Found if the race is not in the plan.
+-   **Routing:** All API routers (`races`, `user_prs`, `race_query`, `user_plans`) are correctly included in the main FastAPI application (`backend/app/main.py`) with appropriate prefixes and tags.
 
 ## Current Status
 

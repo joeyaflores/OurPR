@@ -42,6 +42,14 @@ This document summarizes the frontend development work completed for the OurPR D
 4.  **Race Results List (`RaceResults.tsx`):
     *   Displays race data in individual cards using ShadCN `Card` components.
     *   Dynamically updates based on selected filters and search query.
+    *   **Implemented Add/Remove Plan Button:**
+        *   Fetches the user's current race plan (`GET /api/users/me/plan/`) on load if logged in.
+        *   Displays a button on each race card: "Add to Plan" (outline variant) or "Remove from Plan" (destructive variant) based on whether the race is in the fetched plan.
+        *   Button is disabled if the user is not logged in or during loading/API calls.
+        *   Clicking "Add" calls `POST /api/users/me/plan/`.
+        *   Clicking "Remove" calls `DELETE /api/users/me/plan/{race_id}`.
+        *   Uses optimistic UI updates (updates local state immediately) for a faster feel.
+        *   Provides user feedback via `sonner` toast notifications for success (Add/Remove) and errors (e.g., already in plan, not found, API errors).
 
 5.  **AI Race Insight Cards & Popups:**
     *   Extended the `Race` type (`src/types/race.ts`) to include fields like `aiSummary`, `prPotentialScore`, `similarRunnersCount`, etc.
@@ -85,4 +93,4 @@ Key next steps involve **backend integration**:
 *   Connecting the Chat Search input to the specified AI backend endpoint (`/race-query/ai`).
 *   Implementing the actual logic for "Trending" and "Popular" filters (likely requiring backend data/logic).
 *   Making the PR Timeline dynamic based on user data.
-*   Implementing the "Add to Plan" functionality (backend storage). 
+*   Implementing the "Add to Plan" functionality (backend storage) **(Completed)**. 

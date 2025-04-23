@@ -1,10 +1,16 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+"use client"; // Needs state for user session and button interaction
+
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Race } from "@/types/race"; // Import Race type
 import { Badge } from "@/components/ui/badge"; // Import Badge
-import { Sparkles, Users, Zap, Group, PlusCircle } from "lucide-react"; // Import icons and PlusCircle
+import { Sparkles, Users, Zap, Group, PlusCircle, CheckCircle, AlertCircle, Trash2 } from "lucide-react"; // Import icons and PlusCircle
 import { Button } from "@/components/ui/button"; // Import Button
 import { cn } from "@/lib/utils"; // Import cn for conditional classes
 import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton for loading state
+import { useState, useEffect } from 'react'; // Import hooks
+import { createClient } from '@/lib/supabase/client'; // Import browser client
+import type { User } from '@supabase/supabase-js';
+import { toast } from "sonner"; // Import toast from sonner
 
 // Define props interface
 interface RaceResultsProps {
@@ -15,6 +21,9 @@ interface RaceResultsProps {
   isLoading: boolean; // Add loading state prop
   error: string | null; // Add error state prop
 }
+
+// Action States for the button
+type ActionState = 'idle' | 'loading' | 'success' | 'error';
 
 // Note: This component will likely become a server component fetching data,
 // or receive data as props from the main page component.
@@ -28,6 +37,140 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
   isLoading, 
   error 
 }) => {
+  const supabase = createClient();
+  const [user, setUser] = useState<User | null>(null);
+  const [isUserLoading, setIsUserLoading] = useState(true);
+  // State to track individual button states { [raceId]: ActionState }
+  const [buttonStates, setButtonStates] = useState<Record<string | number, ActionState>>({}); 
+  // State to hold the IDs of races currently in the user's plan
+  const [plannedRaceIds, setPlannedRaceIds] = useState<Set<string | number>>(new Set());
+  const [isPlanLoading, setIsPlanLoading] = useState(true); // Loading state for the plan itself
+
+  // Get user session on mount
+  useEffect(() => {
+    const getInitialData = async () => {
+      setIsUserLoading(true);
+      setIsPlanLoading(true);
+      
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+      setIsUserLoading(false);
+
+      if (sessionError) {
+        console.error("Error getting session:", sessionError);
+        // Don't need to show toast here, button will just be disabled/show add
+      }
+
+      // If user is logged in, fetch their plan
+      if (session) {
+        const accessToken = session.access_token;
+        const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+        const url = `${apiUrl}/api/users/me/plan/`;
+        try {
+          const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${accessToken}` },
+          });
+          if (!response.ok) throw new Error('Failed to fetch plan');
+          const data: string[] = await response.json(); // Expecting array of race IDs (UUID strings)
+          setPlannedRaceIds(new Set(data));
+          console.log("Fetched planned race IDs:", data);
+        } catch (e) {
+          console.error("Failed to fetch initial plan state:", e);
+          setPlannedRaceIds(new Set()); // Reset on error
+        }
+      }
+      setIsPlanLoading(false);
+    };
+
+    getInitialData();
+    
+    // TODO: Listen to auth changes like in AuthButton if needed
+  }, [supabase]);
+
+  // --- Add to Plan Handler ---
+  const handleAddRaceToPlan = async (raceId: string | number) => {
+    if (!user) {
+      toast.error("Please log in to add races to your plan.");
+      return;
+    }
+    setButtonStates(prev => ({ ...prev, [raceId]: 'loading' as ActionState }));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+      const accessToken = session.access_token;
+      const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+      const url = `${apiUrl}/api/users/me/plan/`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ race_id: raceId })
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        if (response.status === 409) { throw new Error(errorData.detail || "Race already in plan."); }
+        else { throw new Error(errorData.detail || `API error: ${response.status}`); }
+      }
+      setButtonStates(prev => ({ ...prev, [raceId]: 'success' as ActionState }));
+      // Update local plan state immediately
+      setPlannedRaceIds(prev => new Set(prev).add(raceId)); 
+      toast.success("Race added to your plan!"); 
+      setTimeout(() => { setButtonStates(prev => ({ ...prev, [raceId]: 'idle' as ActionState })); }, 2000); 
+    } catch (e: any) {
+      console.error("Failed to add race to plan:", e);
+      setButtonStates(prev => ({ ...prev, [raceId]: 'error' as ActionState }));
+      toast.error("Error adding race", { description: e.message }); 
+      setTimeout(() => { setButtonStates(prev => ({ ...prev, [raceId]: 'idle' as ActionState })); }, 3000);
+    }
+  };
+
+   // --- Remove from Plan Handler ---
+   const handleRemoveRaceFromPlan = async (raceId: string | number) => {
+    if (!user) {
+      toast.error("Please log in to modify your plan.");
+      return;
+    }
+    setButtonStates(prev => ({ ...prev, [raceId]: 'loading' as ActionState }));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+      const accessToken = session.access_token;
+      const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+      // Construct URL with raceId for DELETE
+      const url = `${apiUrl}/api/users/me/plan/${raceId}`; 
+
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+
+      if (!response.ok) {
+        // 204 No Content is success, so !response.ok handles actual errors
+        const errorData = await response.json().catch(() => ({})); // Handle cases where error body might not be JSON
+        if (response.status === 404) {
+           throw new Error(errorData.detail || "Race not found in plan.");
+        } else {
+          throw new Error(errorData.detail || `API error: ${response.status}`);
+        }
+      }
+
+      // Success (status 204)
+      setButtonStates(prev => ({ ...prev, [raceId]: 'success' as ActionState }));
+      // Update local plan state immediately
+      setPlannedRaceIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(raceId);
+        return newSet;
+      });
+      toast.success("Race removed from your plan!"); 
+      setTimeout(() => { setButtonStates(prev => ({ ...prev, [raceId]: 'idle' as ActionState })); }, 2000); 
+
+    } catch (e: any) {
+      console.error("Failed to remove race from plan:", e);
+      setButtonStates(prev => ({ ...prev, [raceId]: 'error' as ActionState }));
+      toast.error("Error removing race", { description: e.message }); 
+      setTimeout(() => { setButtonStates(prev => ({ ...prev, [raceId]: 'idle' as ActionState })); }, 3000);
+    }
+  };
 
   // Skeleton loader for race cards
   const RaceCardSkeleton = () => (
@@ -88,6 +231,14 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 justify-items-center">
           {races.map((race) => {
             const isSelected = race.id === selectedRaceId;
+            const currentButtonState = buttonStates[race.id] || 'idle';
+            const isInPlan = plannedRaceIds.has(race.id);
+            // Disable button if race list is loading, user is loading, plan is loading, or action is in progress/success
+            const isButtonDisabled = isLoading || isUserLoading || isPlanLoading || currentButtonState === 'loading' || currentButtonState === 'success';
+            const buttonAction = isInPlan ? () => handleRemoveRaceFromPlan(race.id) : () => handleAddRaceToPlan(race.id);
+            const buttonText = isInPlan ? "Remove from Plan" : "Add to Plan";
+            const ButtonIcon = isInPlan ? Trash2 : PlusCircle;
+
             return (
               <Card 
                 key={race.id} 
@@ -149,16 +300,42 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
 
                   {/* Website Link */}
                     {race.website && race.website !== '#' && (
-                    <a href={race.website} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline mt-2 block pt-2 border-t border-dashed">
+                    <a href={race.website} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline mt-2 block pt-2 border-t border-dashed" onClick={(e) => e.stopPropagation()}>
                       Visit Website
                     </a>
                     )}
-
-                    {/* Add placeholder button */}
-                    <Button variant="outline" size="sm" className="w-full mt-3" disabled>
-                      <PlusCircle className="mr-2 h-4 w-4" /> Add to Plan
-                    </Button>
                 </CardContent>
+                <CardFooter>
+                  <Button 
+                    variant={isInPlan ? "destructive" : "outline"} 
+                    size="sm" 
+                    className="w-full" 
+                    disabled={!user || isButtonDisabled} // Disable if not logged in or during action/loading
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      buttonAction(); // Call the determined action
+                    }} 
+                  >
+                    {currentButtonState === 'loading' ? (
+                      <>
+                        {/* Loading Spinner? */}
+                        Processing...
+                      </>
+                    ) : currentButtonState === 'success' ? (
+                      <>
+                        <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> {isInPlan ? 'Added!' : 'Removed!'}
+                      </>
+                    ) : currentButtonState === 'error' ? (
+                      <>
+                        <AlertCircle className="mr-2 h-4 w-4 text-destructive" /> Error
+                      </>
+                    ) : (
+                      <>
+                        <ButtonIcon className="mr-2 h-4 w-4" /> {buttonText}
+                      </>
+                    )}
+                  </Button>
+                </CardFooter>
               </Card>
             );
           })}
