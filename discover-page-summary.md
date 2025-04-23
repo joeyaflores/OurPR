@@ -63,9 +63,16 @@ This document summarizes the frontend development work completed for the OurPR D
     *   Added minor styling refinement (search icon).
 
 7.  **Your PR Timeline (`PRTimeline.tsx`):
-    *   Created a dedicated component for the timeline section.
-    *   Implemented a horizontal scrolling container displaying placeholder cards.
-    *   Added placeholder "Add to Plan" buttons.
+    *   Fetches and displays the logged-in user's personal records from the `GET /api/users/me/prs` endpoint.
+    *   Handles loading, error, and logged-out states.
+    *   Provides **Add/Edit/Delete PR functionality**:
+        *   Displays an "Add New PR" card/button.
+        *   Clicking "Add New PR" or the "View/Edit Details" button on an existing PR card opens a `Dialog`.
+        *   Uses a dedicated `AddEditPrForm.tsx` component within the `Dialog`, utilizing `react-hook-form` and `zod` for validation.
+        *   The form handles both creating new PRs (`POST /api/users/me/prs`) and updating existing ones (`PUT /api/users/me/prs/{pr_id}`).
+        *   Includes a confirmation step for deleting PRs (`DELETE /api/users/me/prs/{pr_id}`).
+        *   Provides user feedback via `sonner` toast notifications for success and errors during API calls.
+        *   Refreshes the PR list automatically after successful operations.
 
 8.  **Map/List Interactivity:**
     *   Hovering a race card highlights the corresponding map marker.
@@ -92,5 +99,6 @@ Key next steps involve **backend integration**:
 *   Replacing mock data (`MOCK_RACES`) with data fetched from an API.
 *   Connecting the Chat Search input to the specified AI backend endpoint (`/race-query/ai`).
 *   Implementing the actual logic for "Trending" and "Popular" filters (likely requiring backend data/logic).
-*   Making the PR Timeline dynamic based on user data.
-*   Implementing the "Add to Plan" functionality (backend storage) **(Completed)**. 
+*   Making the PR Timeline dynamic based on user data **(Completed)**.
+*   Implementing the "Add to Plan" functionality (backend storage) **(Completed)**.
+*   Implementing Add/Edit/Delete functionality for User PRs **(Completed)**. 

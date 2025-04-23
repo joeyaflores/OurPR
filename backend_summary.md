@@ -35,12 +35,12 @@ This document summarizes the key features and components implemented for the Our
     -   Includes pagination (`skip`, `limit`).
     -   Uses the `Race` Pydantic model for the response.
 -   **User PRs Endpoint (`GET /api/users/me/prs`):**
-    -   Created in `backend/app/api/user_prs.py`.
-    -   Requires authentication (uses `get_current_user`).
-    -   Fetches personal records for the *authenticated* user from the `user_prs` table.
-    -   Supports filtering by `distance`.
-    -   Includes pagination and sorting.
-    -   Uses the `UserPr` Pydantic model for the response.
+    -   Managed in `backend/app/api/user_prs.py`.
+    -   Requires authentication for all operations.
+    -   **`GET /`**: Fetches personal records for the *authenticated* user from the `user_prs` table. Supports filtering by `distance`, pagination, and sorting. Uses the `UserPr` Pydantic model for the response.
+    -   **`POST /`**: Creates a new personal record for the authenticated user. Accepts `UserPrCreate` model in the body. Returns the created `UserPr`.
+    -   **`PUT /{pr_id}`**: Updates an existing personal record (specified by `pr_id`) for the authenticated user. Accepts `UserPrUpdate` model. Returns the updated `UserPr`. Handles 404 if PR not found for the user.
+    -   **`DELETE /{pr_id}`**: Deletes an existing personal record (specified by `pr_id`) for the authenticated user. Returns 204 No Content on success. Handles 404 if PR not found.
 -   **AI Race Query Endpoint (`POST /api/race-query/ai`):**
     -   Created in `backend/app/api/race_query.py`.
     -   Accepts a natural language query (`{"query": "..."}`).
