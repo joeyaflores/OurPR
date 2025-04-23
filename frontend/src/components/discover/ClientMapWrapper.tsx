@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import React from 'react';
 import { Race } from "@/types/race";
+import { motion } from "framer-motion";
 
 // Define props type to include className, races, hoveredRaceId, and selectedRaceId
 interface ClientMapWrapperProps {
@@ -25,6 +26,22 @@ const MapView = dynamic(() => import('@/components/discover/MapView').then((mod)
 
 // This wrapper component ensures the dynamic import happens client-side
 export const ClientMapWrapper: React.FC<ClientMapWrapperProps> = ({ className, races, hoveredRaceId, selectedRaceId, onRaceSelect, isLoading, error }) => {
-  // Pass all the props down to the dynamically loaded MapView
-  return <MapView className={className} races={races} hoveredRaceId={hoveredRaceId} selectedRaceId={selectedRaceId} onRaceSelect={onRaceSelect} isLoading={isLoading} error={error} />;
+  // Wrap the MapView in a motion.div for animation
+  return (
+    <motion.div
+      className={className}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+    >
+      <MapView 
+        races={races} 
+        hoveredRaceId={hoveredRaceId} 
+        selectedRaceId={selectedRaceId} 
+        onRaceSelect={onRaceSelect} 
+        isLoading={isLoading} 
+        error={error} 
+      />
+    </motion.div>
+  );
 }; 

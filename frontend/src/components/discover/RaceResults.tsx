@@ -17,6 +17,7 @@ import {
   TooltipProvider, 
   TooltipTrigger 
 } from "@/components/ui/tooltip"; // Import Tooltip components
+import { motion } from "framer-motion"; // <-- Import motion
 
 // Define props interface
 interface RaceResultsProps {
@@ -30,6 +31,29 @@ interface RaceResultsProps {
 
 // Action States for the button
 type ActionState = 'idle' | 'loading' | 'success' | 'error';
+
+// Animation Variants
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1, // Stagger the animation of children
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { y: 20, opacity: 0 },
+  visible: {
+    y: 0,
+    opacity: 1,
+    transition: {
+      type: "spring",
+      stiffness: 100,
+    },
+  },
+};
 
 // Note: This component will likely become a server component fetching data,
 // or receive data as props from the main page component.
@@ -234,7 +258,12 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
 
       {/* Display Results (only if not loading, no error, and races exist) */}
       {!isLoading && !error && races.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 justify-items-center">
+        <motion.div // <-- Wrap grid with motion.div
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 justify-items-center"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+        >
           {races.map((race) => {
             // Log the individual race object here
             console.log("Rendering Race Card for:", JSON.stringify(race, null, 2)); 
@@ -249,122 +278,158 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
             const ButtonIcon = isInPlan ? Trash2 : PlusCircle;
 
             return (
-              <Card 
-                key={race.id} 
+              <motion.div // <-- Wrap each card container with motion.div
+                key={race.id}
+                variants={itemVariants}
                 className={cn(
-                  "w-full max-w-sm cursor-pointer transition-shadow hover:shadow-md flex flex-col",
-                  isSelected && "ring-2 ring-primary shadow-md"
+                  "w-full max-w-sm cursor-pointer transition-all duration-200",
+                  isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "ring-0"
                 )}
-                onMouseEnter={() => onRaceHover(race.id)} // Set hovered ID on enter
-                onMouseLeave={() => onRaceHover(null)} // Clear hovered ID on leave
-                onClick={() => onRaceSelect(race.id)} // Call select handler on click
+                 // Move event handlers to the motion div
+                onMouseEnter={() => onRaceHover(race.id)}
+                onMouseLeave={() => onRaceHover(null)}
+                onClick={() => onRaceSelect(race.id === selectedRaceId ? null : race.id)}
               >
-                <CardHeader className="pb-2"> {/* Reduced bottom padding */}
-                  <CardTitle className="text-lg">{race.name}</CardTitle> {/* Slightly smaller title */} 
-                  <p className="text-sm text-muted-foreground pt-1"> {/* Basic info */}
-                    {race.city}, {race.state} - {race.date}
-                  </p>
-                </CardHeader>
-                <CardContent className="flex-grow space-y-3 pt-2"> {/* Added flex-grow and space-y */} 
-                  {/* Basic Info */}
-                  <div className="text-sm space-y-1"> {/* Add space-y-1 for better spacing */}
-                    <p>Distance: {race.distance}</p>
-                    {race.elevation && (
-                       <p className="flex items-center"> {/* Use flex for icon alignment */}
-                         <Mountain className="h-4 w-4 mr-1.5 text-muted-foreground"/> {/* Add Mountain icon */}
-                         <span>Elevation: {race.elevation}</span> {/* Display elevation string */}
-                       </p>
-                    )}
-                  </div>
-
-                  {/* AI Summary */}
-                  {race.ai_summary && (
-                    <div className="text-xs text-muted-foreground border-l-2 border-primary pl-2 italic my-2"> {/* Add margin-y */}
-                      <Sparkles className="inline h-3 w-3 mr-1" /> {race.ai_summary}
+                <Card
+                  className={cn(
+                    "w-full h-full flex flex-col", // Ensure card fills motion div
+                    // Remove hover/selection styles from Card, they are on the motion.div now
+                  )}
+                  // Remove event handlers from Card itself
+                >
+                  <CardHeader className="pb-2 flex-row justify-between items-start">
+                    <div>
+                      <CardTitle className="text-lg font-semibold leading-tight">
+                        {race.name}
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground pt-1">
+                        {race.city}, {race.state} - {new Date(race.date).toLocaleDateString()}
+                      </p>
                     </div>
-                  )}
+                     {/* Tooltip for Elevation - Ensure elevation is not null/undefined first */}
+                     {race.elevation != null && (
+                      <TooltipProvider delayDuration={100}>
+                         <Tooltip>
+                           <TooltipTrigger asChild>
+                              <Badge
+                                variant="outline"
+                                className="flex items-center gap-1 shrink-0"
+                                >
+                                <Mountain className="h-3 w-3" />
+                                {/* Format if number, otherwise display raw */} 
+                                {typeof race.elevation === 'number'
+                                  ? `${(race.elevation as number).toLocaleString()} ft` 
+                                  : String(race.elevation)} {/* Cast non-numbers to string */} 
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Total Elevation Gain</p>
+                            </TooltipContent>
+                          </Tooltip>
+                       </TooltipProvider>
+                     )}
+                  </CardHeader>
+                  <CardContent className="flex-grow space-y-3 pt-2"> {/* Added flex-grow and space-y */} 
+                    {/* Basic Info */}
+                    <div className="text-sm space-y-1"> {/* Add space-y-1 for better spacing */}
+                      <p>Distance: {race.distance}</p>
+                      {race.elevation && (
+                         <p className="flex items-center"> {/* Use flex for icon alignment */}
+                           <Mountain className="h-4 w-4 mr-1.5 text-muted-foreground"/> {/* Add Mountain icon */}
+                           <span>Elevation: {race.elevation}</span> {/* Display elevation string */}
+                         </p>
+                      )}
+                    </div>
 
-                  {/* PR Potential */}
-                  {race.pr_potential_score && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="flex items-center text-sm cursor-help"> {/* Added cursor-help */} 
-                              <Zap className="h-4 w-4 mr-1 text-yellow-500" />
-                              <span>PR Potential: </span>
-                              <Badge variant="secondary" className="ml-1.5">{race.pr_potential_score}/10</Badge>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="text-xs max-w-[200px]"> {/* Limit width */}
-                             Score (1-10) indicating potential for a personal record based on course profile and historical data.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
-
-                  {/* Social Signals */}
-                  <div className="text-xs space-y-1 pt-1">
-                    {race.similar_runners_count !== undefined && (
-                      <div className="flex items-center text-muted-foreground">
-                        <Users className="h-3 w-3 mr-1.5" /> {race.similar_runners_count} similar runners PR'd here
+                    {/* AI Summary */}
+                    {race.ai_summary && (
+                      <div className="text-xs text-muted-foreground border-l-2 border-primary pl-2 italic my-2"> {/* Add margin-y */}
+                        <Sparkles className="inline h-3 w-3 mr-1" /> {race.ai_summary}
                       </div>
                     )}
-                      {race.training_groups_count !== undefined && (
-                      <div className="flex items-center text-muted-foreground">
-                          <Group className="h-3 w-3 mr-1.5" /> {race.training_groups_count} training groups joined
-                      </div>
+
+                    {/* PR Potential */}
+                    {race.pr_potential_score && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center text-sm cursor-help"> {/* Added cursor-help */} 
+                                <Zap className="h-4 w-4 mr-1 text-yellow-500" />
+                                <span>PR Potential: </span>
+                                <Badge variant="secondary" className="ml-1.5">{race.pr_potential_score}/10</Badge>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="text-xs max-w-[200px]"> {/* Limit width */}
+                               Score (1-10) indicating potential for a personal record based on course profile and historical data.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
-                    {race.similar_pace_runners_count !== undefined && (
+
+                    {/* Social Signals */}
+                    <div className="text-xs space-y-1 pt-1">
+                      {race.similar_runners_count !== undefined && (
                         <div className="flex items-center text-muted-foreground">
-                          <Users className="h-3 w-3 mr-1.5" /> {race.similar_pace_runners_count} runners at your pace signed up
-                      </div>
-                    )}
-                  </div>
+                          <Users className="h-3 w-3 mr-1.5" /> {race.similar_runners_count} similar runners PR'd here
+                        </div>
+                      )}
+                        {race.training_groups_count !== undefined && (
+                        <div className="flex items-center text-muted-foreground">
+                            <Group className="h-3 w-3 mr-1.5" /> {race.training_groups_count} training groups joined
+                        </div>
+                      )}
+                      {race.similar_pace_runners_count !== undefined && (
+                          <div className="flex items-center text-muted-foreground">
+                            <Users className="h-3 w-3 mr-1.5" /> {race.similar_pace_runners_count} runners at your pace signed up
+                        </div>
+                      )}
+                    </div>
 
-                  {/* Website Link */}
-                    {race.website && race.website !== '#' && (
-                    <a href={race.website} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline mt-2 block pt-2 border-t border-dashed" onClick={(e) => e.stopPropagation()}>
-                      Visit Website
-                    </a>
-                    )}
-                </CardContent>
-                <CardFooter>
-                  <Button 
-                    variant={isInPlan ? "destructive" : "outline"} 
-                    size="sm" 
-                    className="w-full" 
-                    disabled={!user || isButtonDisabled} // Disable if not logged in or during action/loading
-                    onClick={(e) => { 
-                      e.stopPropagation(); 
-                      buttonAction(); // Call the determined action
-                    }} 
-                  >
-                    {currentButtonState === 'loading' ? (
-                      <>
-                        {/* Loading Spinner? */}
-                        Processing...
-                      </>
-                    ) : currentButtonState === 'success' ? (
-                      <>
-                        <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> {isInPlan ? 'Added!' : 'Removed!'}
-                      </>
-                    ) : currentButtonState === 'error' ? (
-                      <>
-                        <AlertCircle className="mr-2 h-4 w-4 text-destructive" /> Error
-                      </>
-                    ) : (
-                      <>
-                        <ButtonIcon className="mr-2 h-4 w-4" /> {buttonText}
-                      </>
-                    )}
-                  </Button>
-                </CardFooter>
-              </Card>
+                    {/* Website Link */}
+                      {race.website && race.website !== '#' && (
+                      <a href={race.website} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline mt-2 block pt-2 border-t border-dashed" onClick={(e) => e.stopPropagation()}>
+                        Visit Website
+                      </a>
+                      )}
+                  </CardContent>
+                  <CardFooter>
+                    <Button 
+                      variant={isInPlan ? "destructive" : "outline"} 
+                      size="sm" 
+                      className="w-full" 
+                      disabled={!user || isButtonDisabled} // Disable if not logged in or during action/loading
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        buttonAction(); // Call the determined action
+                      }} 
+                    >
+                      {currentButtonState === 'loading' ? (
+                        <>
+                          {/* Loading Spinner? */}
+                          Processing...
+                        </>
+                      ) : currentButtonState === 'success' ? (
+                        <>
+                          <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> {isInPlan ? 'Added!' : 'Removed!'}
+                        </>
+                      ) : currentButtonState === 'error' ? (
+                        <>
+                          <AlertCircle className="mr-2 h-4 w-4 text-destructive" /> Error
+                        </>
+                      ) : (
+                        <>
+                          <ButtonIcon className="mr-2 h-4 w-4" /> {buttonText}
+                        </>
+                      )}
+                    </Button>
+                  </CardFooter>
+                </Card>
+              </motion.div>
             );
           })}
-        </div>
+        </motion.div>
       )}
     </section>
   );

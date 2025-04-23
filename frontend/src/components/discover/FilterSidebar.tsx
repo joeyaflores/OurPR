@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { Calendar as CalendarIcon, TrendingUp, Star } from "lucide-react";
 import { format } from "date-fns";
 import { DateRange } from "react-day-picker";
+import { motion } from "framer-motion";
 
 // Import distance colors (same as in MapView)
 const distanceColors = {
@@ -54,7 +55,12 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
   onPopularChange
 }) => {
   return (
-    <aside className="w-full lg:w-64 p-4 border rounded-lg bg-background shadow-sm space-y-6">
+    <motion.aside
+      className="w-full lg:w-64 p-4 border rounded-lg bg-background shadow-sm space-y-6"
+      initial={{ x: -50, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      transition={{ duration: 0.3, ease: "easeInOut" }}
+    >
       <h3 className="text-lg font-semibold">Filters</h3>
 
       {/* Distance Filter */}
@@ -187,6 +193,6 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
          </div>
       </div>
 
-    </aside>
+    </motion.aside>
   );
 }; 
