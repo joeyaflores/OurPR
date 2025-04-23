@@ -42,6 +42,8 @@ interface MapViewProps {
   hoveredRaceId: string | number | null;
   selectedRaceId: string | number | null;
   onRaceSelect: (id: string | number | null) => void;
+  isLoading: boolean; // Add loading state prop
+  error: string | null; // Add error state prop
 }
 
 // Commented out as per last working step
@@ -55,8 +57,9 @@ const MapInteractionHandler: React.FC<{ selectedRaceId: string | number | null, 
   useEffect(() => {
     if (selectedRaceId !== null && map) {
       const selectedRace = races.find(race => race.id === selectedRaceId);
-      if (selectedRace) {
-        const targetLatLng: L.LatLngTuple = [selectedRace.location.lat, selectedRace.location.lng];
+      // Check if race and coordinates exist before using them
+      if (selectedRace && selectedRace.lat != null && selectedRace.lng != null) {
+        const targetLatLng: L.LatLngTuple = [selectedRace.lat, selectedRace.lng];
         map.flyTo(targetLatLng, 13);
 
         map.eachLayer(layer => {
@@ -77,13 +80,17 @@ const MapInteractionHandler: React.FC<{ selectedRaceId: string | number | null, 
 };
 
 // Update component signature to accept props
-export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceId, selectedRaceId, onRaceSelect }) => {
-  // Use the first race's location as default center, or fallback
-  const defaultCenter: L.LatLngExpression = races.length > 0
-    ? [races[0].location.lat, races[0].location.lng]
+export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceId, selectedRaceId, onRaceSelect, isLoading, error }) => {
+  
+  // Find the first race WITH valid coordinates for the default center
+  const firstRaceWithCoords = races.find(r => r.lat != null && r.lng != null);
+  
+  // Use the first valid race's location as default center, or fallback
+  const defaultCenter: L.LatLngExpression = firstRaceWithCoords
+    ? [firstRaceWithCoords.lat!, firstRaceWithCoords.lng!] // Use non-null assertion as we checked
     : [39.8283, -98.5795]; // Fallback center
 
-  const defaultZoom = races.length > 0 ? 9 : 4; // Zoom in closer if we have races
+  const defaultZoom = firstRaceWithCoords ? 9 : 4; // Zoom in closer if we have races with coords
 
   return (
     <MapContainer center={defaultCenter} zoom={defaultZoom} scrollWheelZoom={true} style={{ height: '100%', width: '100%' }} className={`rounded-lg border z-0 ${className || ''}`}>
@@ -92,16 +99,15 @@ export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceI
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      {/* Map over races data to create markers */}
-      {races.map((race) => {
+      {/* Map over races data to create markers, only for races with coords */}
+      {races.filter(race => race.lat != null && race.lng != null).map((race) => {
         // Choose icon based on hover state
         const currentIcon = race.id === hoveredRaceId ? highlightedIcon : defaultIcon;
         return (
           <Marker
             key={race.id}
-            position={[race.location.lat, race.location.lng]}
-            icon={currentIcon} // Use the selected icon
-            // Optionally adjust zIndexOffset to bring hovered marker to front
+            position={[race.lat!, race.lng!]} // Use non-null assertion as we filtered
+            icon={currentIcon}
             zIndexOffset={race.id === hoveredRaceId ? 1000 : 0} 
             eventHandlers={{
               click: () => {
@@ -109,10 +115,11 @@ export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceI
               },
             }}
           >
-            <Popup minWidth={200}> {/* Set min width for better layout */} 
+            <Popup minWidth={200}>
               <div className="space-y-1.5 text-sm">
                 <div className="font-bold text-base">{race.name}</div>
-                <div>{race.location.city}, {race.location.state}</div>
+                {/* Display city/state directly */}
+                <div>{race.city}, {race.state}</div> 
                 <div>{race.date} - {race.distance}</div>
                 {race.elevation && <div>Elevation: {race.elevation}</div>}
                 
@@ -156,9 +163,6 @@ export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceI
       {/* Render the interaction handler component *inside* MapContainer */}
       <MapInteractionHandler selectedRaceId={selectedRaceId} races={races} />
 
-      {/* Remove static placeholder markers */}
-      {/* <Marker position={[32.7767, -96.7970]} icon={defaultIcon}> ... </Marker> */}
-      {/* <Marker position={[39.7392, -104.9903]} icon={defaultIcon}> ... </Marker> */}
     </MapContainer>
   );
 }; 

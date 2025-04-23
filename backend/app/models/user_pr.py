@@ -24,4 +24,4 @@ class UserPr(UserPrBase):
     created_at: datetime
 
     class Config:
-        orm_mode = True # Changed from `from_attributes = True` for compatibility 
+        from_attributes = True # Use Pydantic v2 standard 

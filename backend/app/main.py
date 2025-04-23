@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware # Import CORS Middleware
 
 # Import API routers
 from .api import races, user_prs, race_query
@@ -9,6 +10,21 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# CORS Configuration
+# TODO: Restrict origins for production
+origins = [
+    "http://localhost:3000", # Next.js frontend development server
+    "http://localhost:3001", # Allow potentially different frontend dev port
+    # Add any other origins if needed (e.g., deployed frontend URL)
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"], # Allows all methods (GET, POST, etc.)
+    allow_headers=["*"], # Allows all headers
+)
 
 @app.get("/", tags=["Root"])
 async def root():

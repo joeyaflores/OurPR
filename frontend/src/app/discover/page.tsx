@@ -1,75 +1,22 @@
 "use client"; // Need state for filters, so convert to Client Component
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { ChatSearchInput } from "@/components/discover/ChatSearchInput";
 import { FilterSidebar } from "@/components/discover/FilterSidebar";
 import { RaceResults } from "@/components/discover/RaceResults";
 import { ClientMapWrapper } from "@/components/discover/ClientMapWrapper";
 import { Race } from "@/types/race";
 import { DateRange } from "react-day-picker";
-import { parseISO, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
+import { format } from 'date-fns'; // Keep format for date query params
 import { useDebounce } from "@/hooks/useDebounce";
 import { PRTimeline } from "@/components/discover/PRTimeline";
 
-// Mock Data (Replace with actual data fetching later)
-const MOCK_RACES: Race[] = [
-  {
-    id: 1,
-    name: "Dallas Downtown Dash",
-    location: { city: "Dallas", state: "TX", lat: 32.779167, lng: -96.808891 },
-    date: "2024-10-15",
-    distance: "10K",
-    elevation: "Flat",
-    website: "#",
-    aiSummary: "Known for its flat profile and typically cool October weather.",
-    prPotentialScore: 8,
-    similarRunnersCount: 15,
-    trainingGroupsCount: 2,
-    similarPaceRunnersCount: 25
-  },
-  {
-    id: 2,
-    name: "Denver Mile High Marathon",
-    location: { city: "Denver", state: "CO", lat: 39.739235, lng: -104.990250 },
-    date: "2024-11-01",
-    distance: "Marathon",
-    elevation: "Mixed",
-    website: "#",
-    aiSummary: "Challenging altitude, but well-supported with scenic city views.",
-    prPotentialScore: 5,
-    trainingGroupsCount: 5,
-    similarPaceRunnersCount: 40
-  },
-  {
-    id: 3,
-    name: "Austin River Run",
-    location: { city: "Austin", state: "TX", lat: 30.267153, lng: -97.743061 },
-    date: "2024-09-22",
-    distance: "Half Marathon",
-    elevation: "Mostly Flat",
-    website: "#",
-    aiSummary: "Popular race along the river, generally flat with one notable hill.",
-    prPotentialScore: 7,
-    similarRunnersCount: 22,
-    trainingGroupsCount: 8,
-  },
-  {
-    id: 4,
-    name: "Fort Worth Flat 5K",
-    location: { city: "Fort Worth", state: "TX", lat: 32.7555, lng: -97.3308 },
-    date: "2024-12-01",
-    distance: "5K",
-    elevation: "Flat",
-    website: "#",
-    aiSummary: "Very fast and flat course, perfect for a 5K PR attempt in cool weather.",
-    prPotentialScore: 9,
-    similarRunnersCount: 30,
-    similarPaceRunnersCount: 18
-  }
-];
+// REMOVE MOCK DATA
+// const MOCK_RACES: Race[] = [ ... ];
 
-// Get unique distances for filter options
-const uniqueDistances = Array.from(new Set(MOCK_RACES.map(race => race.distance)));
+// Keep unique distances definition, but it might be empty initially or need updating
+// TODO: Populate distances from API or use a predefined list
+const uniqueDistances: string[] = ['5K', '10K', 'Half Marathon', 'Marathon', 'Other']; // Predefined for now
 
 export default function DiscoverPage() {
   // State for filters
@@ -79,61 +26,110 @@ export default function DiscoverPage() {
   const [hoveredRaceId, setHoveredRaceId] = useState<string | number | null>(null);
   const [selectedRaceId, setSelectedRaceId] = useState<string | number | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  const debouncedSearchQuery = useDebounce(searchQuery, 500);
   const [showTrending, setShowTrending] = useState<boolean>(false);
   const [showPopular, setShowPopular] = useState<boolean>(false);
 
-  // Filtering logic
-  const filteredRaces = useMemo(() => {
-    const lowerCaseQuery = debouncedSearchQuery.toLowerCase();
+  // New State for Fetched Data
+  const [races, setRaces] = useState<Race[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-    let intermediateRaces = MOCK_RACES.filter(race => {
-      const distanceMatch = selectedDistance === "all" || race.distance === selectedDistance;
-      const flatnessMatch = !showFlatOnly || (race.elevation && race.elevation.toLowerCase().includes('flat'));
-      const dateMatch = (() => {
-        if (!selectedDateRange?.from) return true;
-        try {
-          const raceDate = parseISO(race.date);
-          const from = startOfDay(selectedDateRange.from);
-          if (!selectedDateRange.to) {
-            return raceDate >= from;
-          }
-          const to = endOfDay(selectedDateRange.to);
-          return isWithinInterval(raceDate, { start: from, end: to });
-        } catch (error) {
-          console.error("Error parsing race date:", race.date, error);
-          return false;
-        }
-      })();
-      const searchMatch = lowerCaseQuery === "" || 
-                          race.name.toLowerCase().includes(lowerCaseQuery) ||
-                          race.location.city.toLowerCase().includes(lowerCaseQuery) ||
-                          race.location.state.toLowerCase().includes(lowerCaseQuery);
+  // --- Data Fetching Functions ---
 
-      return distanceMatch && flatnessMatch && dateMatch && searchMatch;
-    });
+  // Renamed: Fetches races based on sidebar filters
+  const fetchFilteredRaces = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'; 
+    const url = new URL('/api/races', baseUrl);
+    const params = new URLSearchParams();
 
-    if (showTrending) {
-      console.log("Applying 'Trending' filter (placeholder)");
+    // Append query parameters based on filters
+    if (selectedDistance !== "all") {
+      params.append('distance', selectedDistance);
     }
-
-    if (showPopular) {
-      console.log("Applying 'Popular' filter (sorting by similarRunnersCount)");
-      intermediateRaces = intermediateRaces.sort((a, b) => 
-        (b.similarRunnersCount ?? 0) - (a.similarRunnersCount ?? 0)
-      );
+    if (showFlatOnly) {
+      params.append('flat_only', 'true');
     }
+    if (selectedDateRange?.from) {
+      params.append('start_date', format(selectedDateRange.from, 'yyyy-MM-dd'));
+    }
+    if (selectedDateRange?.to) {
+      params.append('end_date', format(selectedDateRange.to, 'yyyy-MM-dd'));
+    }
+    // TODO: Add trending/popular/pagination params later
 
-    return intermediateRaces;
-  }, [selectedDistance, showFlatOnly, selectedDateRange, debouncedSearchQuery, showTrending, showPopular]);
+    url.search = params.toString();
+    console.log("Fetching filtered races from:", url.toString());
+
+    try {
+      const response = await fetch(url.toString());
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+      const data: Race[] = await response.json();
+      setRaces(data);
+    } catch (e: any) {
+      console.error("Failed to fetch filtered races:", e);
+      setError(e.message || "Failed to fetch filtered races.");
+      setRaces([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedDistance, showFlatOnly, selectedDateRange]); // Dependencies for filtered fetch
+
+  // New: Fetches races based on AI search query
+  const fetchAiRaces = useCallback(async (query: string) => {
+    setIsLoading(true);
+    setError(null);
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+    // Ensure the correct endpoint path
+    const url = new URL('/api/race-query/ai', baseUrl); 
+    console.log(`Fetching AI races for query: "${query}" from: ${url.toString()}`);
+
+    try {
+      const response = await fetch(url.toString(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: query })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+      const data: Race[] = await response.json();
+      setRaces(data);
+    } catch (e: any) {
+      console.error("Failed to fetch AI races:", e);
+      setError(e.message || "Failed to fetch AI races.");
+      setRaces([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []); // No external state dependencies needed inside, only the query argument
+
+  // --- Effect for Combined Fetching Logic ---
+  useEffect(() => {
+    if (debouncedSearchQuery) {
+      console.log("Effect: Debounced search query detected, fetching AI races.");
+      fetchAiRaces(debouncedSearchQuery);
+    } else {
+      console.log("Effect: No search query, fetching filtered races.");
+      fetchFilteredRaces();
+    }
+  }, [debouncedSearchQuery, fetchFilteredRaces, fetchAiRaces]); // Re-run when query or fetch functions change
 
   // Handlers
   const handleRaceSelect = (id: string | number | null) => {
     setSelectedRaceId(id);
-    // Optionally reset hover when a card is clicked
-    // setHoveredRaceId(null);
   };
 
+  // This handler now just updates the raw search query state
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(event.target.value);
   };
@@ -145,14 +141,15 @@ export default function DiscoverPage() {
       </h1>
 
       {/* 1. Chat Search Input */}
-      <ChatSearchInput 
-        value={searchQuery} 
-        onChange={handleSearchChange} 
+      <ChatSearchInput
+        value={searchQuery}
+        onChange={handleSearchChange}
       />
 
       <div className="flex flex-col lg:flex-row w-full max-w-7xl mx-auto gap-6 mt-6">
         {/* 3. Smart Filters Sidebar */}
         <FilterSidebar
+          // Use predefined or fetched distances
           distances={uniqueDistances}
           selectedDistance={selectedDistance}
           onDistanceChange={setSelectedDistance}
@@ -160,6 +157,7 @@ export default function DiscoverPage() {
           onFlatnessChange={setShowFlatOnly}
           selectedDateRange={selectedDateRange}
           onDateRangeChange={setSelectedDateRange}
+          // Keep placeholder filters, they don't affect fetchRaces yet
           showTrending={showTrending}
           onTrendingChange={setShowTrending}
           showPopular={showPopular}
@@ -167,33 +165,34 @@ export default function DiscoverPage() {
         />
 
         <div className="flex-1 flex flex-col gap-6">
-           {/* 2. Map View */}
-           <ClientMapWrapper 
-             className="h-[60vh] lg:h-auto lg:aspect-video" 
-             races={filteredRaces} 
-             hoveredRaceId={hoveredRaceId} 
+           {/* 2. Map View - Pass fetched races and loading/error state */}
+           <ClientMapWrapper
+             className="h-[60vh] lg:h-auto lg:aspect-video"
+             // Pass fetched races instead of filtered mock races
+             races={races} 
+             isLoading={isLoading} // Pass loading state
+             error={error} // Pass error state
+             hoveredRaceId={hoveredRaceId}
              selectedRaceId={selectedRaceId}
              onRaceSelect={handleRaceSelect}
            />
 
-           {/* 4. Race Results (Cards) - Linked to Map/Filters */}
-           <RaceResults 
-             races={filteredRaces} 
-             onRaceHover={setHoveredRaceId} 
+           {/* 4. Race Results - Pass fetched races and loading/error state */}
+           <RaceResults
+             // Pass fetched races instead of filtered mock races
+             races={races}
+             isLoading={isLoading} // Pass loading state
+             error={error} // Pass error state
+             onRaceHover={setHoveredRaceId}
              onRaceSelect={handleRaceSelect}
              selectedRaceId={selectedRaceId}
            />
         </div>
       </div>
 
-      {/* Replace placeholder div with the PRTimeline component */}
-      {/* <div className="w-full max-w-7xl mx-auto mt-8 p-4 border rounded-lg shadow-sm bg-background">
-        <h3 className="text-lg font-semibold mb-2">Your PR Timeline</h3>
-        <p className="text-muted-foreground text-sm">Timeline Placeholder (Horizontal Scroll)</p>
-      </div> */}
+      {/* 5. Your PR Timeline */}
+      {/* TODO: Implement data fetching for PRTimeline (Priority 3) */}
       <PRTimeline />
-
-      {/* Other sections like Social Signals integration will go within the cards or map popups */}
 
     </main>
   );
