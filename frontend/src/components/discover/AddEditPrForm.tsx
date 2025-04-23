@@ -50,8 +50,17 @@ const formSchema = z.object({
 
 type AddEditPrFormValues = z.infer<typeof formSchema>;
 
+// Define a more specific type for the data needed to edit a PR
+// This avoids needing the full UserPr type which might not be available
+type PrEditData = {
+    id: string;
+    distance: string;
+    date: string | Date; // Accept string or Date
+    time_in_seconds: number;
+};
+
 interface AddEditPrFormProps {
-  prToEdit?: UserPr | null; // PR object for editing, null/undefined for adding
+  prToEdit?: PrEditData | null; // Use the specific edit type
   onSubmit: (values: AddEditPrFormValues, prId?: string) => Promise<void>; // Async submit handler
   onCancel: () => void;
   onDelete?: (prId: string) => Promise<void>; // Optional delete handler

@@ -15,7 +15,8 @@ class UserPrCreate(UserPrBase):
 
 class UserPrUpdate(BaseModel):
     # Allow updating date, time, or associated race
-    date: Optional[date] = None
+    # Accept date as string initially for flexibility during parsing
+    date: Optional[str] = None
     time_in_seconds: Optional[int] = None
     race_id: Optional[uuid.UUID] = None
 

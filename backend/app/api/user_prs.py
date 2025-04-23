@@ -4,6 +4,7 @@ from supabase import Client
 from gotrue.types import User as SupabaseUser # Import correct User type
 from typing import List, Optional
 import uuid
+from datetime import date as date_obj # Import date object with alias
 
 from ..services.supabase_client import get_supabase_client
 from ..models.user_pr import UserPr # Import the UserPr model
@@ -118,9 +119,16 @@ async def update_my_pr(
         if not update_data:
             raise HTTPException(status_code=400, detail="No update data provided")
 
-        # Convert date if present
+        # Explicitly handle date string conversion
         if 'date' in update_data and update_data['date']:
-            update_data['date'] = update_data['date'].isoformat()
+            try:
+                # Parse the string (expecting YYYY-MM-DD)
+                parsed_date = date_obj.fromisoformat(update_data['date'])
+                # Convert back to ISO string for Supabase update
+                update_data['date'] = parsed_date.isoformat()
+            except ValueError:
+                # Handle invalid date format string from client
+                raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
 
         # Update the record, ensuring it belongs to the current user
         response = supabase.table("user_prs") \
