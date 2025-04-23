@@ -16,7 +16,7 @@ import { PRTimeline } from "@/components/discover/PRTimeline";
 
 // Keep unique distances definition, but it might be empty initially or need updating
 // TODO: Populate distances from API or use a predefined list
-const uniqueDistances: string[] = ['5K', '10K', 'Half Marathon', 'Marathon', 'Other']; // Predefined for now
+const uniqueDistances: string[] = ['5K', '10K', 'Half Marathon', 'Marathon', '50K', '50 Miles', '100K', '100 Miles', 'Other']; // Updated with ultra distances
 
 export default function DiscoverPage() {
   // State for filters

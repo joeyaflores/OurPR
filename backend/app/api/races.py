@@ -14,7 +14,7 @@ async def get_races(
     supabase: Client = Depends(get_supabase_client),
     city: Optional[str] = Query(None, description="Filter by city"),
     state: Optional[str] = Query(None, description="Filter by state"),
-    distance: Optional[Literal['5K', '10K', 'Half Marathon', 'Marathon', 'Other']] = Query(None, description="Filter by distance"),
+    distance: Optional[Literal['5K', '10K', 'Half Marathon', 'Marathon', '50K', '50 Miles', '100K', '100 Miles', 'Other']] = Query(None, description="Filter by distance"),
     flat_only: Optional[bool] = Query(None, description="Filter for mostly flat races (flatness_score >= 4)"),
     start_date: Optional[date] = Query(None, description="Filter races on or after this date"),
     end_date: Optional[date] = Query(None, description="Filter races on or before this date"),

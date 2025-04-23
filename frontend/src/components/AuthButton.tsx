@@ -53,7 +53,7 @@ export default function AuthButton() {
   return user ? (
     <div className="flex items-center gap-4">
       <span className="text-sm text-muted-foreground hidden sm:inline">
-        Hey, {user.email?.split('@')[0] ?? 'User'}!
+        {/* Hey, {user.email?.split('@')[0] ?? 'User'}! */}
       </span>
       <Button variant="outline" size="sm" onClick={handleSignOut}>Logout</Button>
     </div>
