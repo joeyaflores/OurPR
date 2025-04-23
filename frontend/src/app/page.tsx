@@ -1,4 +1,4 @@
-import Link from 'next/link';
+;import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server'; // Corrected import name
 import {
@@ -151,12 +151,15 @@ export default async function Home() {
                       )
                     ))
                   ) : (
-                    <p className="text-muted-foreground text-sm">No upcoming races planned yet.</p>
+                    <div className="text-center text-muted-foreground text-sm space-y-2">
+                      <p>Ready to find your next challenge? 🏁</p>
+                      <p>Explore races and add them to your plan!</p>
+                    </div>
                   )}
                 </CardContent>
                 <CardFooter>
                    <Link href="/discover" passHref>
-                      <Button variant="outline" size="sm">Discover More Races</Button>
+                      <Button size="sm">Discover More Races</Button>
                    </Link>
                    {/* Add Link to 'My Plan' page later */}
                 </CardFooter>
@@ -177,12 +180,18 @@ export default async function Home() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-muted-foreground text-sm">No personal records logged yet.</p>
+                    <div className="text-center text-muted-foreground text-sm space-y-2">
+                      <p>Log your first Personal Record ⏱️</p>
+                      <p>Track your progress and celebrate achievements!</p>
+                    </div>
                   )}
                 </CardContent>
-                <CardFooter>
-                   {/* Add Link to 'My PRs' page later */}
-                   <Button variant="outline" size="sm" disabled>View All PRs</Button> 
+                <CardFooter className="flex gap-2 justify-start">
+                   <Button variant="secondary" size="sm" disabled>
+                      Log New PR (Coming Soon)
+                   </Button>
+                   {/* Keep View All PRs disabled for now */}
+                   <Button variant="outline" size="sm" disabled>View All PRs</Button>
                 </CardFooter>
               </Card>
             </div>
