@@ -1,12 +1,10 @@
 "use client"; // Map will require client-side interaction
 
-import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet'; // Import Leaflet library itself
 import { Race } from '@/types/race'; // Import Race type
 import { useEffect, useState } from 'react';
-import { Mountain, Sparkles, Zap, Users, Group } from 'lucide-react'; // <-- Import Mountain, Sparkles, and Zap icons, and Users, Group
-import { Badge } from '@/components/ui/badge'; // <-- Import Badge
 
 // --- Icon Setup ---
 // Import the images using require
@@ -126,17 +124,19 @@ const MapLegend = () => {
           title="Show legend"
         >
           <div className="flex items-center gap-2">
-            {commonDistances.slice(0, 3).map((distance, i) => (
-              <span
-                key={distance}
-                className="w-3 h-3 rounded-full border-2 border-white"
-                style={{ 
-                  backgroundColor: distanceColors[distance],
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                  zIndex: 3 - i
-                }}
-              />
-            ))}
+            <div className="flex -space-x-1">
+              {commonDistances.slice(0, 3).map((distance, i) => (
+                <span
+                  key={distance}
+                  className="w-3 h-3 rounded-full border-2 border-white"
+                  style={{ 
+                    backgroundColor: distanceColors[distance],
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                    zIndex: 3 - i
+                  }}
+                />
+              ))}
+            </div>
             <span className="text-xs font-medium">Legend</span>
           </div>
         </button>
@@ -152,7 +152,6 @@ interface MapViewProps {
   hoveredRaceId: string | number | null;
   selectedRaceId: string | number | null;
   onRaceSelect: (id: string | number | null) => void;
-  onRaceHover: (id: string | number | null) => void;
   isLoading: boolean;
   error: string | null;
 }
@@ -191,7 +190,7 @@ const MapInteractionHandler: React.FC<{ selectedRaceId: string | number | null, 
 };
 
 // Update component signature to accept props
-export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceId, selectedRaceId, onRaceSelect, onRaceHover, isLoading, error }) => {
+export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceId, selectedRaceId, onRaceSelect, isLoading, error }) => {
   
   // Find the first race WITH valid coordinates for the default center
   const firstRaceWithCoords = races.find(r => r.lat != null && r.lng != null);
@@ -221,91 +220,50 @@ export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceI
               key={race.id}
               position={[race.lat!, race.lng!]} // Use non-null assertion as we filtered
               icon={icon}
-              zIndexOffset={isHovered ? 1000 : 0}
+              zIndexOffset={isHovered ? 1000 : 0} 
               eventHandlers={{
                 click: () => {
-                  // Toggle selection: if clicking the already selected marker, deselect it (null)
-                  const nextSelectedId = race.id === selectedRaceId ? null : race.id;
-                  onRaceSelect(nextSelectedId);
-                },
-                mouseover: (e: L.LeafletMouseEvent) => {
-                  onRaceHover(race.id);
-                  // Optional: Bring marker to front visually on hover (Leaflet specific)
-                  if (e.target && typeof (e.target as any).bringToFront === 'function') {
-                    (e.target as any).bringToFront();
-                  } else {
-                    console.warn("bringToFront not available on event target", e.target);
-                  }
-                },
-                mouseout: () => {
-                  onRaceHover(null);
+                  onRaceSelect(race.id);
                 },
               }}
             >
               <Popup minWidth={200}>
                 <div className="space-y-1.5 text-sm">
-                  <div className="font-bold text-base mb-1">{race.name}</div>
+                  <div className="font-bold text-base">{race.name}</div>
+                  {/* Display city/state directly */}
+                  <div className="flex items-center gap-2">
+                    <span 
+                      className="inline-block w-3 h-3 rounded-full" 
+                      style={{ 
+                        backgroundColor: color,
+                        border: '2px solid white',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+                      }}
+                    />
+                    <span>{race.date} - {race.distance}</span>
+                  </div>
+                  {race.elevation && <div>Elevation: {race.elevation}</div>}
                   
-                  {/* Location & Date (formatted) - Consistent with Card Header */}
-                  <p className="text-muted-foreground text-sm"> 
-                    {race.city}, {race.state} - {new Date(race.date).toLocaleDateString()}
-                  </p>
-
-                  {/* Distance - Consistent with Card Body */}
-                  <div className="text-sm">Distance: {race.distance}</div>
-
-                  {/* Elevation Badge - Consistent with Card Header */}
-                  {race.elevation != null && (
-                     <div className="flex items-center text-sm"> {/* Wrap for layout */} 
-                        <Badge
-                          variant="outline"
-                          className="flex items-center gap-1"
-                        >
-                          <Mountain className="h-3 w-3" />
-                          {typeof race.elevation === 'number'
-                            ? `${(race.elevation as number).toLocaleString()} ft`
-                            : String(race.elevation)}
-                        </Badge>
-                      </div>
-                  )}
-                  
-                  {/* AI Summary - Consistent with Card */}
+                  {/* AI Summary */}
                   {race.ai_summary && (
-                    <div className="text-xs text-muted-foreground border-l-2 border-primary pl-2 italic my-1"> {/* Reduced margin */}
-                      <Sparkles className="inline h-3 w-3 mr-1" /> {race.ai_summary}
+                    <div className="text-xs text-gray-600 italic pt-1">
+                      " {race.ai_summary} "
                     </div>
                   )}
 
-                  {/* PR Potential - Consistent with Card (without tooltip) */}
+                  {/* PR Potential */}
                   {race.pr_potential_score && (
-                     <div className="flex items-center text-sm pt-1"> {/* Added padding-top */} 
-                         <Zap className="h-4 w-4 mr-1 text-yellow-500 shrink-0" /> {/* Added shrink-0 */} 
-                         <span>PR Potential: </span>
-                         <Badge variant="secondary" className="ml-1.5">{race.pr_potential_score}/10</Badge>
-                     </div>
+                    <div className="pt-1">
+                       PR Potential: <b>{race.pr_potential_score}/10</b>
+                    </div>
                   )}
 
-                  {/* Social Signals - Consistent with Card (icons + simplified text) */}
+                  {/* Social Signals - simplified for popup */}
                   {(race.similar_runners_count !== undefined || race.training_groups_count !== undefined || race.similar_pace_runners_count !== undefined) && (
-                      <div className="text-xs pt-1 border-t border-dashed mt-1.5 space-y-1 text-muted-foreground"> {/* Added text-muted-foreground and space-y */} 
-                          {race.similar_runners_count !== undefined && (
-                            <div className="flex items-center gap-1.5"> {/* Added flex container */} 
-                              <Users className="h-3 w-3 shrink-0" /> 
-                              <span>{race.similar_runners_count} similar PRs</span>
-                            </div>
-                          )}
-                          {race.training_groups_count !== undefined && (
-                            <div className="flex items-center gap-1.5"> {/* Added flex container */} 
-                              <Group className="h-3 w-3 shrink-0" />
-                              <span>{race.training_groups_count} groups joined</span>
-                            </div>
-                          )}
-                          {race.similar_pace_runners_count !== undefined && (
-                            <div className="flex items-center gap-1.5"> {/* Added flex container */} 
-                              <Users className="h-3 w-3 shrink-0" />
-                              <span>{race.similar_pace_runners_count} at your pace</span>
-                            </div>
-                          )}
+                      <div className="text-xs pt-1 border-t border-dashed mt-1.5">
+                          {race.similar_runners_count !== undefined && <div>{race.similar_runners_count} similar PRs</div>}
+                          {race.training_groups_count !== undefined && <div>{race.training_groups_count} groups joined</div>}
+                          {race.similar_pace_runners_count !== undefined && <div>{race.similar_pace_runners_count} at your pace</div>}
                       </div>
                   )}
 
@@ -324,15 +282,6 @@ export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceI
                   )}
                 </div>
               </Popup>
-              {/* Add Tooltip for hover */}
-              <Tooltip 
-                direction="top" 
-                offset={[0, -10]}
-                // Use the custom class defined in globals.css 
-                className="leaflet-tooltip-custom"
-              >
-                <span>{race.name}</span>
-              </Tooltip>
             </Marker>
           );
         })}

@@ -12,7 +12,6 @@ interface ClientMapWrapperProps {
   hoveredRaceId: string | number | null;
   selectedRaceId: string | number | null;
   onRaceSelect: (id: string | number | null) => void;
-  onRaceHover: (id: string | number | null) => void;
   isLoading: boolean;
   error: string | null;
 }
@@ -26,7 +25,7 @@ const MapView = dynamic(() => import('@/components/discover/MapView').then((mod)
 );
 
 // This wrapper component ensures the dynamic import happens client-side
-export const ClientMapWrapper: React.FC<ClientMapWrapperProps> = ({ className, races, hoveredRaceId, selectedRaceId, onRaceSelect, onRaceHover, isLoading, error }) => {
+export const ClientMapWrapper: React.FC<ClientMapWrapperProps> = ({ className, races, hoveredRaceId, selectedRaceId, onRaceSelect, isLoading, error }) => {
   // Wrap the MapView in a motion.div for animation
   return (
     <motion.div
@@ -40,7 +39,6 @@ export const ClientMapWrapper: React.FC<ClientMapWrapperProps> = ({ className, r
         hoveredRaceId={hoveredRaceId} 
         selectedRaceId={selectedRaceId} 
         onRaceSelect={onRaceSelect} 
-        onRaceHover={onRaceHover}
         isLoading={isLoading} 
         error={error} 
       />
