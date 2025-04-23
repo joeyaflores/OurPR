@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import AuthButton from "./AuthButton";
 
 export function SiteHeader() {
   return (
@@ -30,13 +31,8 @@ export function SiteHeader() {
 
         {/* Spacer to push actions to the right */}
         <div className="flex flex-1 items-center justify-end space-x-2">
-          {/* Right side actions */}
-          <Button variant="ghost" size="sm">
-            Log In
-          </Button>
-          <Button size="sm">
-            Sign Up
-          </Button>
+          {/* Replace placeholder buttons with AuthButton */}
+          <AuthButton />
           {/* Add Theme Toggle later */}
         </div>
       </div>
