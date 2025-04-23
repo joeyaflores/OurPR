@@ -37,11 +37,11 @@ function formatTime(totalSeconds: number | null): string {
 // Define types for fetched data (adjust based on actual Supabase response)
 type PlannedRace = {
   id: string; // plan entry id
-  races: { // Allow for array as inferred by TS, though likely single element
+  races: { // Expecting a single race object or null, matching runtime data
     id: string;
     name: string;
     date: string;
-  }[] | null; 
+  } | null; 
 };
 
 type RecentPr = {
@@ -85,12 +85,12 @@ export default async function Home() {
         .limit(3);
 
       if (racesError) throw racesError;
-      console.log("Raw racesData from Supabase:", JSON.stringify(racesData, null, 2)); // Log raw data
+      console.log("Raw racesData from Supabase (Homepage):", JSON.stringify(racesData, null, 2)); // Log raw data
       
-      // Assign directly - types should align better now
-      plannedRaces = racesData || []; 
+      // Assign directly, using double type assertion to satisfy strict TS check
+      plannedRaces = (racesData as unknown as PlannedRace[]) || []; 
       
-      console.log("Final plannedRaces:", JSON.stringify(plannedRaces, null, 2)); // Log final data
+      console.log("Final plannedRaces (Homepage):", JSON.stringify(plannedRaces, null, 2)); // Log final data
 
       // Fetch recent PRs (limit 3)
       const { data: prsData, error: prsError } = await supabase
@@ -143,10 +143,10 @@ export default async function Home() {
                 <CardContent className="space-y-3">
                   {plannedRaces.length > 0 ? (
                     plannedRaces.map((plan) => (
-                      plan.races && plan.races.length > 0 && (
+                      plan.races && (
                         <div key={plan.id} className="flex justify-between items-center text-sm">
-                          <span>{plan.races[0].name}</span>
-                          <Badge variant="outline">{new Date(plan.races[0].date + 'T00:00:00').toLocaleDateString()}</Badge>
+                          <span>{plan.races.name}</span>
+                          <Badge variant="outline">{new Date(plan.races.date + 'T00:00:00').toLocaleDateString()}</Badge>
                         </div>
                       )
                     ))

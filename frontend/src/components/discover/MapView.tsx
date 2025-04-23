@@ -124,25 +124,25 @@ export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceI
                 {race.elevation && <div>Elevation: {race.elevation}</div>}
                 
                 {/* AI Summary */}
-                {race.aiSummary && (
+                {race.ai_summary && (
                   <div className="text-xs text-gray-600 italic pt-1">
-                    " {race.aiSummary} "
+                    " {race.ai_summary} "
                   </div>
                 )}
 
                 {/* PR Potential */}
-                {race.prPotentialScore && (
+                {race.pr_potential_score && (
                   <div className="pt-1">
-                     PR Potential: <b>{race.prPotentialScore}/10</b>
+                     PR Potential: <b>{race.pr_potential_score}/10</b>
                   </div>
                 )}
 
                 {/* Social Signals - simplified for popup */}
-                {(race.similarRunnersCount !== undefined || race.trainingGroupsCount !== undefined || race.similarPaceRunnersCount !== undefined) && (
+                {(race.similar_runners_count !== undefined || race.training_groups_count !== undefined || race.similar_pace_runners_count !== undefined) && (
                     <div className="text-xs pt-1 border-t border-dashed mt-1.5">
-                        {race.similarRunnersCount !== undefined && <div>{race.similarRunnersCount} similar PRs</div>}
-                        {race.trainingGroupsCount !== undefined && <div>{race.trainingGroupsCount} groups joined</div>}
-                        {race.similarPaceRunnersCount !== undefined && <div>{race.similarPaceRunnersCount} at your pace</div>}
+                        {race.similar_runners_count !== undefined && <div>{race.similar_runners_count} similar PRs</div>}
+                        {race.training_groups_count !== undefined && <div>{race.training_groups_count} groups joined</div>}
+                        {race.similar_pace_runners_count !== undefined && <div>{race.similar_pace_runners_count} at your pace</div>}
                     </div>
                 )}
 
