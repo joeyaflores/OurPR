@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link'; // <-- Import Link
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client'; // Import browser client
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator"; // Import Separator
 import { FcGoogle } from "react-icons/fc"; // Import Google icon
+import { PersonStanding } from "lucide-react"; // <-- Use PersonStanding instead
 
 export default function LoginPage() {
   // console.log("LoginPage component rendered/rerendered"); // Keep logs minimal for now
@@ -96,16 +98,15 @@ export default function LoginPage() {
     setError(null);
     setMessage(null);
     console.log("Attempting Google Sign In");
+
+    // Construct the redirect URL using environment variable
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const redirectUrl = `${siteUrl}/auth/callback`;
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        // Optional: Add query parameters if needed, e.g., for offline access
-        // queryParams: {
-        //   access_type: 'offline',
-        //   prompt: 'consent',
-        // },
-        // Optional: Specify a redirect URL, otherwise it uses the default site URL
-        // redirectTo: `${window.location.origin}/auth/callback`
+        redirectTo: redirectUrl, // <-- Explicitly set redirectTo
       },
     });
 
@@ -118,12 +119,17 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-4">
+    // Add gradient background and ensure centering
+    <main className="flex min-h-screen flex-col items-center justify-center p-4 bg-gradient-to-b from-background to-muted/40">
       <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-2xl">Login / Sign Up</CardTitle>
+        <CardHeader className="text-center"> {/* Center align header text */}
+          <CardTitle className="text-2xl flex items-center justify-center gap-2">
+             {/* Icon can be added here if desired */}
+             {/* <PersonStanding className="h-6 w-6" /> */}
+             Log In to OurPR
+          </CardTitle>
           <CardDescription>
-            Enter your email and password or sign in with Google.
+            Find your perfect race, track your PRs, and plan your season.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
@@ -157,10 +163,10 @@ export default function LoginPage() {
             <p className="text-sm font-medium text-emerald-600">{message}</p> // Use a success color
           )}
         </CardContent>
-        <CardFooter className="flex flex-col gap-3">
+        <CardFooter className="flex flex-col gap-4"> {/* Increased gap */}
           {/* Sign In button */}
           <Button onClick={handleSignIn} className="w-full" disabled={isLoading || isGoogleLoading}>
-            {isLoading ? 'Processing...' : 'Sign In'}
+            {isLoading && !isGoogleLoading ? 'Signing In...' : 'Sign In with Email'}
           </Button>
 
           {/* Sign Up button */}
@@ -188,8 +194,16 @@ export default function LoginPage() {
             disabled={isGoogleLoading || isLoading} // Disable if any action is loading
           >
             <FcGoogle className="h-5 w-5" /> {/* Google Icon */}
-            {isGoogleLoading ? 'Processing...' : 'Sign in with Google'}
+            {isGoogleLoading ? 'Redirecting...' : 'Continue with Google'}
           </Button>
+
+          {/* Link to Sign Up Page */}
+           <p className="mt-2 text-center text-sm text-muted-foreground">
+              Don&apos;t have an account?{' '}
+              <Link href="/sign-up" className="underline hover:text-primary">
+                Sign Up
+              </Link>
+            </p>
         </CardFooter>
       </Card>
     </main>
