@@ -167,7 +167,7 @@ export default function DiscoverPage() {
         <div className="flex-1 flex flex-col gap-6">
            {/* 2. Map View - Pass fetched races and loading/error state */}
            <ClientMapWrapper
-             className="h-[60vh] lg:h-auto lg:aspect-video"
+             className="min-h-[300px] h-[60vh] lg:h-auto lg:aspect-video relative"
              // Pass fetched races instead of filtered mock races
              races={races} 
              isLoading={isLoading} // Pass loading state
