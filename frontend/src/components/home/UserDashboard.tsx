@@ -24,6 +24,8 @@ import {
 import { AddEditPrForm } from '@/components/discover/AddEditPrForm'; // Reuse the form
 import { toast } from "sonner";
 import { format } from 'date-fns';
+import { motion } from "framer-motion"; // Import motion
+import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
 
 // Types for data - Keep consistent with page.tsx initially
 type PlannedRace = {
@@ -80,6 +82,51 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8
 interface UserDashboardProps {
   user: User;
 }
+
+// --- Loading Skeleton Component ---
+const DashboardSkeleton = () => (
+  <motion.div
+    initial={{ opacity: 0.5 }}
+    animate={{ opacity: [0.5, 1, 0.5] }} // Pulse animation
+    transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+    className="space-y-8 w-full"
+  >
+    <Skeleton className="h-8 w-3/4 rounded-md" /> {/* Welcome message */}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Races Card Skeleton */}
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-6 w-1/2 rounded-md" />
+          <Skeleton className="h-4 w-3/4 rounded-md" />
+        </CardHeader>
+        <CardContent className="space-y-3 min-h-[100px]">
+          <Skeleton className="h-4 w-full rounded-md" />
+          <Skeleton className="h-4 w-5/6 rounded-md" />
+          <Skeleton className="h-4 w-full rounded-md" />
+        </CardContent>
+        <CardFooter>
+          <Skeleton className="h-9 w-32 rounded-md" />
+        </CardFooter>
+      </Card>
+      {/* PRs Card Skeleton */}
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-6 w-1/2 rounded-md" />
+          <Skeleton className="h-4 w-3/4 rounded-md" />
+        </CardHeader>
+        <CardContent className="space-y-3 min-h-[100px]">
+          <Skeleton className="h-4 w-full rounded-md" />
+          <Skeleton className="h-4 w-5/6 rounded-md" />
+          <Skeleton className="h-4 w-full rounded-md" />
+        </CardContent>
+        <CardFooter className="flex gap-2 justify-start">
+          <Skeleton className="h-9 w-24 rounded-md" />
+          <Skeleton className="h-9 w-28 rounded-md" />
+        </CardFooter>
+      </Card>
+    </div>
+  </motion.div>
+);
 
 export default function UserDashboard({ user }: UserDashboardProps) {
   const [plannedRaces, setPlannedRaces] = useState<PlannedRace[]>([]);
@@ -271,8 +318,8 @@ export default function UserDashboard({ user }: UserDashboardProps) {
 
   // --- Render Logic ---
   if (isLoading) {
-    // Optional: Add a loading skeleton or spinner for the dashboard
-    return <div className="text-center p-10">Loading dashboard...</div>;
+    // Render the skeleton component while loading
+    return <DashboardSkeleton />;
   }
 
   return (
