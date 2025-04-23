@@ -1,0 +1,33 @@
+-- Supabase schema definitions for OurPR
+
+-- Users table (provided by Supabase Auth)
+
+-- Races table
+-- CREATE TABLE races (
+--   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+--   name TEXT NOT NULL,
+--   city TEXT,
+--   state TEXT,
+--   distance TEXT, -- e.g., '5K', '10K', 'Half Marathon', 'Marathon'
+--   date DATE,
+--   flatness_score INTEGER, -- e.g., 1-5 (1=very hilly, 5=very flat)
+--   pr_potential_score DECIMAL, -- Calculated score based on flatness, competition, etc.
+--   ai_summary TEXT, -- LLM-generated summary
+--   website TEXT,
+--   view_count INTEGER DEFAULT 0,
+--   save_count INTEGER DEFAULT 0,
+--   plan_count INTEGER DEFAULT 0,
+--   created_at TIMESTAMPTZ DEFAULT NOW(),
+--   updated_at TIMESTAMPTZ DEFAULT NOW()
+-- );
+
+-- User PRs table
+-- CREATE TABLE user_prs (
+--   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+--   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+--   race_id UUID REFERENCES races(id) ON DELETE SET NULL, -- Optional link to the race where PR was set
+--   distance TEXT NOT NULL,
+--   date DATE NOT NULL,
+--   time_in_seconds INTEGER NOT NULL,
+--   created_at TIMESTAMPTZ DEFAULT NOW()
+-- ); 

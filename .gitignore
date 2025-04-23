@@ -1,0 +1,11 @@
+# Cursor IDE specific files
+.cursor/
+
+# Temporary/Note files
+*.txt
+
+# OS specific
+.DS_Store
+
+# Env files at root (if any)
+.env* 
