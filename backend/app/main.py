@@ -1,8 +1,12 @@
+import os # <-- Add import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware # Import CORS Middleware
+from dotenv import load_dotenv # <-- Add import load_dotenv
 
 # Import API routers
 from .api import races, user_prs, race_query, user_plans # Add user_plans
+
+load_dotenv() # <-- Load environment variables from .env file
 
 app = FastAPI(
     title="OurPR Backend API",
@@ -11,12 +15,21 @@ app = FastAPI(
 )
 
 # CORS Configuration
-# TODO: Restrict origins for production
+# Dynamically set origins based on environment variable
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+# Define allowed origins
+# Add your Vercel production URL and potentially preview URLs here
 origins = [
-    "http://localhost:3000", # Next.js frontend development server
-    "http://localhost:3001", # Allow potentially different frontend dev port
-    # Add any other origins if needed (e.g., deployed frontend URL)
+    frontend_url, # Dynamically set from FRONTEND_URL
+    # Example for Vercel preview URLs (more specific is better)
+    # "https://our-pr-joeyflores74s-projects-*.vercel.app",
 ]
+
+# Add a specific check for Render's PR preview URLs if you use them
+render_preview_url = os.getenv("RENDER_EXTERNAL_URL")
+if render_preview_url and render_preview_url.endswith(".onrender.com"):
+    origins.append(render_preview_url)
 
 app.add_middleware(
     CORSMiddleware,

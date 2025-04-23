@@ -3,4 +3,7 @@ uvicorn[standard]
 supabase
 pydantic
 python-dotenv
-google-generativeai 
+google-generativeai
+requests
+lxml
+beautifulsoup4 
