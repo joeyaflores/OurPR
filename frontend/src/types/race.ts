@@ -10,11 +10,11 @@ export interface Race {
   distance?: string; // Make optional to match DB/Pydantic
   elevation?: string;
   website?: string;
-  aiSummary?: string;
-  prPotentialScore?: number;
-  similarRunnersCount?: number;
-  trainingGroupsCount?: number;
-  similarPaceRunnersCount?: number;
+  ai_summary?: string;
+  pr_potential_score?: number;
+  similar_runners_count?: number;
+  training_groups_count?: number;
+  similar_pace_runners_count?: number;
   // Add other fields from Pydantic model if needed for type consistency
   flatness_score?: number;
   view_count?: number;

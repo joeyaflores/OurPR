@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Race } from "@/types/race"; // Import Race type
 import { Badge } from "@/components/ui/badge"; // Import Badge
-import { Sparkles, Users, Zap, Group, PlusCircle, CheckCircle, AlertCircle, Trash2 } from "lucide-react"; // Import icons and PlusCircle
+import { Sparkles, Users, Zap, Group, PlusCircle, CheckCircle, AlertCircle, Trash2, Mountain } from "lucide-react"; // Import icons and Mountain icon
 import { Button } from "@/components/ui/button"; // Import Button
 import { cn } from "@/lib/utils"; // Import cn for conditional classes
 import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton for loading state
@@ -11,6 +11,12 @@ import { useState, useEffect } from 'react'; // Import hooks
 import { createClient } from '@/lib/supabase/client'; // Import browser client
 import type { User } from '@supabase/supabase-js';
 import { toast } from "sonner"; // Import toast from sonner
+import { 
+  Tooltip, 
+  TooltipContent, 
+  TooltipProvider, 
+  TooltipTrigger 
+} from "@/components/ui/tooltip"; // Import Tooltip components
 
 // Define props interface
 interface RaceResultsProps {
@@ -230,6 +236,9 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
       {!isLoading && !error && races.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 justify-items-center">
           {races.map((race) => {
+            // Log the individual race object here
+            console.log("Rendering Race Card for:", JSON.stringify(race, null, 2)); 
+            
             const isSelected = race.id === selectedRaceId;
             const currentButtonState = buttonStates[race.id] || 'idle';
             const isInPlan = plannedRaceIds.has(race.id);
@@ -258,42 +267,58 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
                 </CardHeader>
                 <CardContent className="flex-grow space-y-3 pt-2"> {/* Added flex-grow and space-y */} 
                   {/* Basic Info */}
-                  <div className="text-sm">
+                  <div className="text-sm space-y-1"> {/* Add space-y-1 for better spacing */}
                     <p>Distance: {race.distance}</p>
-                    {race.elevation && <p>Elevation: {race.elevation}</p>}
+                    {race.elevation && (
+                       <p className="flex items-center"> {/* Use flex for icon alignment */}
+                         <Mountain className="h-4 w-4 mr-1.5 text-muted-foreground"/> {/* Add Mountain icon */}
+                         <span>Elevation: {race.elevation}</span> {/* Display elevation string */}
+                       </p>
+                    )}
                   </div>
 
                   {/* AI Summary */}
-                  {race.aiSummary && (
-                    <div className="text-xs text-muted-foreground border-l-2 border-primary pl-2 italic">
-                      <Sparkles className="inline h-3 w-3 mr-1" /> {race.aiSummary}
+                  {race.ai_summary && (
+                    <div className="text-xs text-muted-foreground border-l-2 border-primary pl-2 italic my-2"> {/* Add margin-y */}
+                      <Sparkles className="inline h-3 w-3 mr-1" /> {race.ai_summary}
                     </div>
                   )}
 
                   {/* PR Potential */}
-                  {race.prPotentialScore && (
-                    <div className="flex items-center text-sm">
-                        <Zap className="h-4 w-4 mr-1 text-yellow-500" />
-                        <span>PR Potential: </span>
-                        <Badge variant="secondary" className="ml-1.5">{race.prPotentialScore}/10</Badge>
-                    </div>
+                  {race.pr_potential_score && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center text-sm cursor-help"> {/* Added cursor-help */} 
+                              <Zap className="h-4 w-4 mr-1 text-yellow-500" />
+                              <span>PR Potential: </span>
+                              <Badge variant="secondary" className="ml-1.5">{race.pr_potential_score}/10</Badge>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="text-xs max-w-[200px]"> {/* Limit width */}
+                             Score (1-10) indicating potential for a personal record based on course profile and historical data.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   )}
 
                   {/* Social Signals */}
                   <div className="text-xs space-y-1 pt-1">
-                    {race.similarRunnersCount !== undefined && (
+                    {race.similar_runners_count !== undefined && (
                       <div className="flex items-center text-muted-foreground">
-                        <Users className="h-3 w-3 mr-1.5" /> {race.similarRunnersCount} similar runners PR'd here
+                        <Users className="h-3 w-3 mr-1.5" /> {race.similar_runners_count} similar runners PR'd here
                       </div>
                     )}
-                      {race.trainingGroupsCount !== undefined && (
+                      {race.training_groups_count !== undefined && (
                       <div className="flex items-center text-muted-foreground">
-                          <Group className="h-3 w-3 mr-1.5" /> {race.trainingGroupsCount} training groups joined
+                          <Group className="h-3 w-3 mr-1.5" /> {race.training_groups_count} training groups joined
                       </div>
                     )}
-                    {race.similarPaceRunnersCount !== undefined && (
+                    {race.similar_pace_runners_count !== undefined && (
                         <div className="flex items-center text-muted-foreground">
-                          <Users className="h-3 w-3 mr-1.5" /> {race.similarPaceRunnersCount} runners at your pace signed up
+                          <Users className="h-3 w-3 mr-1.5" /> {race.similar_pace_runners_count} runners at your pace signed up
                       </div>
                     )}
                   </div>
