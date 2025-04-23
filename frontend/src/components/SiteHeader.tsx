@@ -20,12 +20,12 @@ export function SiteHeader() {
             <Link href="/discover" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
               Discover Races
             </Link>
-            <Link href="/groups" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
+            {/* <Link href="/groups" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
               Training Groups
             </Link>
             <Link href="/ai-tools" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
               AI Tools
-            </Link>
+            </Link> */}
           </nav>
         </div>
 

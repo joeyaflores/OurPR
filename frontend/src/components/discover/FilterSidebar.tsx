@@ -12,6 +12,19 @@ import { Calendar as CalendarIcon, TrendingUp, Star } from "lucide-react";
 import { format } from "date-fns";
 import { DateRange } from "react-day-picker";
 
+// Import distance colors (same as in MapView)
+const distanceColors = {
+  '5K': '#4ade80', // green
+  '10K': '#2563eb', // blue
+  'Half Marathon': '#8b5cf6', // purple
+  'Marathon': '#ef4444', // red
+  '50K': '#f97316', // orange
+  '50 Miles': '#eab308', // yellow
+  '100K': '#ec4899', // pink
+  '100 Miles': '#7c3aed', // violet
+  'Other': '#64748b', // slate
+} as const;
+
 // Define props interface
 interface FilterSidebarProps {
   distances: string[];
@@ -49,13 +62,44 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
         <Label htmlFor="distance-select">Distance</Label>
         <Select value={selectedDistance} onValueChange={onDistanceChange}>
           <SelectTrigger id="distance-select" className="w-full">
-            <SelectValue placeholder="Select distance..." />
+            <SelectValue>
+              {selectedDistance === 'all' ? (
+                'All Distances'
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span 
+                    className="w-3 h-3 rounded-full inline-block"
+                    style={{ 
+                      backgroundColor: distanceColors[selectedDistance as keyof typeof distanceColors] || distanceColors.Other,
+                      border: '2px solid white',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                    }}
+                  />
+                  {selectedDistance}
+                </div>
+              )}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Distances</SelectItem>
+            <SelectItem value="all">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-gradient-to-r from-green-400 via-blue-500 to-purple-500" />
+                All Distances
+              </div>
+            </SelectItem>
             {distances.map((distance) => (
               <SelectItem key={distance} value={distance}>
-                {distance}
+                <div className="flex items-center gap-2">
+                  <span 
+                    className="w-3 h-3 rounded-full inline-block"
+                    style={{ 
+                      backgroundColor: distanceColors[distance as keyof typeof distanceColors] || distanceColors.Other,
+                      border: '2px solid white',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                    }}
+                  />
+                  {distance}
+                </div>
               </SelectItem>
             ))}
           </SelectContent>
