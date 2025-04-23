@@ -155,7 +155,7 @@ export default async function Home() {
                   )}
                 </CardContent>
                 <CardFooter>
-                   <Link href="/discover" passHref legacyBehavior>
+                   <Link href="/discover" passHref>
                       <Button variant="outline" size="sm">Discover More Races</Button>
                    </Link>
                    {/* Add Link to 'My Plan' page later */}
@@ -207,10 +207,10 @@ export default async function Home() {
                 </p>
               </CardContent>
               <CardFooter className="flex justify-center gap-4">
-                <Link href="/login" passHref legacyBehavior>
+                <Link href="/login" passHref>
                   <Button>Log In</Button>
                 </Link>
-                 <Link href="/sign-up" passHref legacyBehavior>
+                 <Link href="/sign-up" passHref>
                    <Button variant="outline">Sign Up</Button>
                  </Link>
               </CardFooter>
