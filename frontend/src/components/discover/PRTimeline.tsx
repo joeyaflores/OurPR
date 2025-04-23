@@ -123,7 +123,7 @@ export function PRTimeline() {
           <p className="text-muted-foreground text-sm pl-2">No personal records found.</p>
         ) : (
           // Map over fetched PRs (same rendering logic)
-          prs.map((pr) => (
+          (prs.map((pr) => (
             <Card key={pr.id} className="min-w-[200px] flex-shrink-0"> 
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">{pr.distance} PR</CardTitle>
@@ -136,7 +136,7 @@ export function PRTimeline() {
                 </Button>
               </CardContent>
             </Card>
-          ))
+          )))
         )}
       </div>
     </section>

@@ -97,7 +97,7 @@ export default function LoginPage() {
             <p className="text-sm font-medium text-destructive">Error: {error}</p>
           )}
           {message && (
-            <p className="text-sm font-medium text-emerald-600">{message}</p> // Use a success color
+            (<p className="text-sm font-medium text-emerald-600">{message}</p>) // Use a success color
           )}
         </CardContent>
         <CardFooter className="flex flex-col gap-3">

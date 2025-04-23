@@ -12,7 +12,7 @@ interface ChatSearchInputProps {
 
 export const ChatSearchInput: React.FC<ChatSearchInputProps> = ({ value, onChange }) => (
   // Add relative positioning to the main container
-  <div className="relative mb-4 w-full max-w-2xl mx-auto p-4 border rounded-lg shadow-sm bg-background">
+  (<div className="relative mb-4 w-full max-w-2xl mx-auto p-4 border rounded-lg shadow-sm bg-background">
     {/* Top placeholder text */}
     <p className="text-muted-foreground text-center text-sm mb-2">
       Try searching by name, location, or describe the race you want...
@@ -30,5 +30,5 @@ export const ChatSearchInput: React.FC<ChatSearchInputProps> = ({ value, onChang
         onChange={onChange}
       />
     </div>
-  </div>
+  </div>)
 ); 
