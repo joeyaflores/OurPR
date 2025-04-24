@@ -277,6 +277,25 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
             const buttonText = isInPlan ? "Remove from Plan" : "Add to Plan";
             const ButtonIcon = isInPlan ? Trash2 : PlusCircle;
 
+            // Function to get the appropriate placeholder image
+            const getPlaceholderImage = (distance: Race['distance']): string => {
+              switch (distance) {
+                case '5K':
+                case '10K':
+                  return '/images/generic-track.jpeg'; // Replace with your actual path
+                case 'Half Marathon':
+                case 'Marathon':
+                  return '/images/generic-road.jpeg'; // Replace with your actual path
+                case '50K':
+                case '50 Miles':
+                case '100K':
+                case '100 Miles':
+                  return '/images/generic-trail.jpeg'; // Replace with your actual path
+                default:
+                  return '/images/generic-default.jpeg'; // A default fallback
+              }
+            };
+
             return (
               <motion.div // <-- Wrap each card container with motion.div
                 key={race.id}
@@ -297,6 +316,18 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
                   )}
                   // Remove event handlers from Card itself
                 >
+                  {/* Image Container */}
+                  <img 
+                    src={race.image_url || getPlaceholderImage(race.distance)} 
+                    alt={`Image of ${race.name}`} 
+                    className="w-full h-32 object-cover" // Adjust height (h-32) as needed
+                    onError={(e) => {
+                      // Optional: Handle image load errors, e.g., set to default placeholder
+                      const target = e.target as HTMLImageElement;
+                      target.onerror = null; // Prevent infinite loop if fallback also fails
+                      target.src = '/images/generic-default.jpeg'; // Fallback image
+                    }}
+                  />
                   <CardHeader className="pb-2 flex-row justify-between items-start">
                     <div>
                       <CardTitle className="text-lg font-semibold leading-tight">
