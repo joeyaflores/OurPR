@@ -8,6 +8,7 @@ import type { Race } from '@/lib/apiClient'; // Or your correct Race type path
 import type { UserPr } from '@/types/user_pr'; // <-- Import UserPr type
 import { Skeleton } from "@/components/ui/skeleton"; // For loading state
 import { AlertCircle } from 'lucide-react'; // For error state
+import { differenceInDays, differenceInWeeks, formatDistanceToNowStrict, isToday, isPast, parseISO } from 'date-fns'; // <-- Import date-fns functions
 
 // Add API Base URL (consider moving to a config file or env var)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -185,6 +186,36 @@ export default function MyPlanPage() {
                         const relevantPr = userPrs.find(pr => pr.distance === race.distance);
                         const prTimeString = relevantPr ? formatTime(relevantPr.time_in_seconds) : null;
 
+                        // Calculate time until race
+                        let timeUntilRaceString = "Date TBD";
+                        if (race.date) {
+                            try {
+                                const raceDate = parseISO(race.date); // Use parseISO for ISO strings
+                                const now = new Date();
+                                
+                                if (isToday(raceDate)) {
+                                    timeUntilRaceString = "Today!";
+                                } else if (isPast(raceDate)) {
+                                    timeUntilRaceString = "Past";
+                                } else {
+                                    const daysUntil = differenceInDays(raceDate, now);
+                                    if (daysUntil < 14) {
+                                        // Show days if less than 2 weeks
+                                        timeUntilRaceString = `in ${daysUntil + 1} day${daysUntil === 0 ? '' : 's'}`;
+                                    } else {
+                                        // Show weeks otherwise
+                                        const weeksUntil = differenceInWeeks(raceDate, now);
+                                        timeUntilRaceString = `in ${weeksUntil} week${weeksUntil === 1 ? '' : 's'}`;
+                                    }
+                                    // More robust alternative using formatDistanceToNowStrict:
+                                    // timeUntilRaceString = `in ${formatDistanceToNowStrict(raceDate)}`; 
+                                }
+                            } catch (e) {
+                                console.error("Error parsing race date:", race.date, e);
+                                timeUntilRaceString = "Invalid Date";
+                            }
+                        }
+
                         return (
                             <RaceCard 
                                 key={race.id} 
@@ -192,6 +223,7 @@ export default function MyPlanPage() {
                                 viewMode="plan"
                                 onRaceRemoved={handleRaceRemoved}
                                 userPr={prTimeString}
+                                timeUntilRace={timeUntilRaceString}
                             />
                         );
                     })}

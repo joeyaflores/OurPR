@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { Race } from '@/lib/apiClient'; // Import the Race type
-import { ExternalLink, CalendarDays, Thermometer, BarChart, Mountain, PlusCircle, CheckCircle, AlertCircle, Trash2, Trophy } from 'lucide-react'; // Icons
+import { ExternalLink, CalendarDays, Thermometer, BarChart, Mountain, PlusCircle, CheckCircle, AlertCircle, Trash2, Trophy, Clock } from 'lucide-react'; // Icons
 import { createClient } from '@/lib/supabase/client'; // Import Supabase client
 import type { User } from '@supabase/supabase-js';
 import { toast } from "sonner"; // Import toast
@@ -18,12 +18,13 @@ interface RaceCardProps {
   viewMode?: 'discover' | 'plan'; // Add viewMode prop
   onRaceRemoved?: (raceId: string | number) => void; // Callback for successful removal
   userPr?: string | null; // Add optional prop for user's PR time string
+  timeUntilRace?: string; // Add optional prop for time until race string
 }
 
 // Add API Base URL (consider moving to a config file)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
-export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr }: RaceCardProps) { // Destructure viewMode with default and onRaceRemoved
+export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr, timeUntilRace }: RaceCardProps) { // Destructure viewMode with default and onRaceRemoved
     const supabase = createClient();
     const [user, setUser] = useState<User | null>(null);
     // State to track individual button states { [raceId]: ActionState }
@@ -225,10 +226,18 @@ export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr }:
     <Card key={race.id} className="overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 flex flex-col">
         <CardHeader className="pb-3">
             <CardTitle className="text-lg font-semibold">{race.name}</CardTitle>
-            <CardDescription className="flex items-center text-sm">
-                 <CalendarDays className="mr-1.5 h-4 w-4" />
-                 {race.date ? format(new Date(race.date), "PPP") : "Date TBD"}
-                 {race.distance ? <span className="ml-2 font-medium">({race.distance})</span> : ''}
+            <CardDescription className="flex items-center text-sm flex-wrap gap-x-2 gap-y-1">
+                 <span className="inline-flex items-center">
+                    <CalendarDays className="mr-1.5 h-4 w-4" />
+                    {race.date ? format(new Date(race.date), "PPP") : "Date TBD"}
+                 </span>
+                 {timeUntilRace && timeUntilRace !== "Date TBD" && (
+                    <span className="inline-flex items-center font-medium text-primary">
+                        <Clock className="mr-1 h-4 w-4" />
+                        {timeUntilRace}
+                    </span>
+                 )}
+                 {race.distance ? <span className="font-medium">({race.distance})</span> : ''}
             </CardDescription>
         </CardHeader>
         <CardContent className="text-sm space-y-2 pt-0 pb-4 flex-grow">
@@ -240,7 +249,7 @@ export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr }:
              {/* Display User PR if provided */}
              {userPr && (
                  <div className="flex items-center text-sm text-blue-600 font-medium pt-1">
-                     <Trophy className="mr-1.5 h-4 w-4 flex-shrink-0" /> {/* Or use Clock icon */}
+                     <Trophy className="mr-1.5 h-4 w-4 flex-shrink-0" />
                      <span>Your PR: {userPr}</span>
                  </div>
              )}
@@ -264,13 +273,13 @@ export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr }:
         <CardFooter className="pt-0 pb-3 border-t pt-3">
             {displayButton && (
                 <Button 
-                    variant={buttonState === 'success' ? 'outline' : buttonVariant} // Use determined variant
+                    variant={buttonState === 'success' ? 'outline' : buttonVariant}
                     size="sm" 
                     className="w-full"
                     disabled={isButtonDisabled}
                     onClick={(e) => { 
-                        e.stopPropagation(); // Prevent card click if needed
-                        finalButtonAction(); // Use determined action
+                        e.stopPropagation();
+                        finalButtonAction();
                     }}
                 >
                     {buttonState === 'loading' ? (
@@ -279,7 +288,6 @@ export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr }:
                         </>
                     ) : buttonState === 'success' ? (
                         <>
-                          {/* Success message depends on the action taken */}
                           <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> 
                           {finalButtonAction === handleAddRaceToPlan ? 'Added!' : 'Removed!'}
                         </>
@@ -289,7 +297,7 @@ export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr }:
                         </>
                     ) : (
                         <>
-                          <FinalButtonIcon className="mr-2 h-4 w-4" /> {finalButtonText} {/* Use determined icon and text */}
+                          <FinalButtonIcon className="mr-2 h-4 w-4" /> {finalButtonText}
                         </>
                     )}
                 </Button> 
