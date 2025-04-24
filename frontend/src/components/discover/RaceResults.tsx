@@ -100,10 +100,22 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
           const response = await fetch(url, {
             headers: { 'Authorization': `Bearer ${accessToken}` },
           });
-          if (!response.ok) throw new Error('Failed to fetch plan');
-          const data: string[] = await response.json(); // Expecting array of race IDs (UUID strings)
-          setPlannedRaceIds(new Set(data));
-          console.log("Fetched planned race IDs:", data);
+          // Handle response based on status
+          if (!response.ok) {
+            // If backend returns 404 (no plan yet), treat as empty, not error
+            if (response.status === 404) {
+                 setPlannedRaceIds(new Set());
+                 console.log("RaceResults: No initial plan found (404).");
+            } else {
+                throw new Error(`Failed to fetch plan: ${response.status}`);
+            }
+          } else {
+            // Expect an array of Race objects now
+            const data: Race[] = await response.json(); 
+            // Extract the IDs to build the Set
+            setPlannedRaceIds(new Set(data.map(r => r.id)));
+            console.log("RaceResults: Fetched planned race objects, extracted IDs:", data.map(r=>r.id));
+          }
         } catch (e) {
           console.error("Failed to fetch initial plan state:", e);
           setPlannedRaceIds(new Set()); // Reset on error
