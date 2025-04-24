@@ -35,7 +35,7 @@ const TimePicker = React.forwardRef<HTMLDivElement, TimePickerProps>(
           if (part === 'hours' && (updatedValue < 0 || updatedValue > 99)) {
              updatedValue = undefined; // Set to undefined if invalid
           } 
-          if ((part === 'minutes' || part === 'seconds') && (updatedValue < 0 || updatedValue > 59)) {
+          if ((part === 'minutes' || part === 'seconds') && (updatedValue !== undefined && (updatedValue < 0 || updatedValue > 59))) {
               updatedValue = undefined; // Set to undefined if invalid
           }
       }
