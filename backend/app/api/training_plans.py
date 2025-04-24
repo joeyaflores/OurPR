@@ -138,7 +138,7 @@ async def generate_training_plan(
     Instructions:
     - Provide a week-by-week summary including:
         - The primary focus for the week (e.g., base building, intensity, peak, taper).
-        - Key workout types appropriate for the distance (e.g., Long Run, Easy Run(s), Tempo Run, Interval/Speed Work). Mention target distances or durations for key runs like the long run.
+        - Key workout types appropriate for the distance (e.g., Long Run, Easy Run(s), Tempo Run, Interval/Speed Work). Mention target distances or durations for key runs and include a brief description of the intended effort level (e.g., 'Tempo Run (comfortably hard pace)', 'Easy Run (conversational pace)', 'Intervals (hard effort)').
         - An estimated total weekly mileage range in MILES (e.g., "25-30 miles").
     - Start from Week 1 and go up to Week {weeks_until}. Keep summaries concise.
     - Ensure long runs build gradually week-over-week, typically increasing by no more than 10-15%.
@@ -154,10 +154,10 @@ async def generate_training_plan(
       "race_distance": "{race.distance or 'Unknown'}",
       "total_weeks": {weeks_until},
       "weeks": [
-        {{"week_number": 1, "summary": "Focus: Base building. Key Workouts: Long Run (e.g., 6 miles), Easy Runs (3x). Rest days: 2.", "estimated_weekly_mileage": "15-20 miles"}},
-        {{"week_number": 2, "summary": "Focus: Introduce intensity. Key Workouts: Long Run (e.g., 7 miles), Tempo Run (e.g., 3 miles @ tempo), Easy Runs (2x). Rest days: 2. Optional: 1x Cross-Training.", "estimated_weekly_mileage": "18-23 miles"}},
+        {{"week_number": 1, "summary": "Focus: Base building. Key Workouts: Long Run (e.g., 6 miles at easy pace), Easy Runs (3x at conversational pace). Rest days: 2.", "estimated_weekly_mileage": "15-20 miles"}},
+        {{"week_number": 2, "summary": "Focus: Introduce intensity. Key Workouts: Long Run (e.g., 7 miles easy), Tempo Run (e.g., 3 miles @ comfortably hard pace), Easy Runs (2x conversational). Rest days: 2. Optional: 1x Cross-Training.", "estimated_weekly_mileage": "18-23 miles"}},
         ...
-        {{"week_number": {weeks_until}, "summary": "Focus: Taper Week {{ {weeks_until} - {weeks_until-1} }}. Key Workouts: Very short easy runs. Rest focus. Final race prep.", "estimated_weekly_mileage": "8-12 miles"}}
+        {{"week_number": {weeks_until}, "summary": "Focus: Taper Week {{ {weeks_until} - {weeks_until-1} }}. Key Workouts: Very short easy runs (conversational pace). Rest focus. Final race prep.", "estimated_weekly_mileage": "8-12 miles"}}
       ],
       "notes": ["Optional notes like 'Adjust paces based on feel', 'Always warm up before workouts and cool down after.', 'Listen to your body and take extra rest if needed.', 'This is a general outline; consult a coach for personalization.'"]
     }}
