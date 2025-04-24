@@ -8,40 +8,49 @@ export default async function OnboardingPage() {
   const cookieStore = await cookies(); 
   const supabase = createClient(cookieStore);
 
-  // 1. Get User Session - Use getUser() for server-side verification
+  // 1. Get User Session
   const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-  // Handle potential user fetch error
   if (userError) {
-      console.error("Error getting user:", userError.message);
-      // Redirect to login or an error page if user cannot be verified
+      console.error("Onboarding Page: Error getting user:", userError.message);
       redirect('/login?error=user_fetch_failed');
   }
-
-  // If no user is returned after checking with the server, redirect to login
   if (!user) {
     console.log("Onboarding Page: No verified user found, redirecting to login.");
     redirect('/login');
   }
 
+  // <<< Log User ID >>>
+  console.log(`Onboarding Page: Checking goal status for user ID: ${user.id}`);
+
   // 2. Check if User Already Has a Goal Record
-  const { data: goal, error: goalError } = await supabase
-    .from('user_goals') 
-    .select('id') // Select minimal field
-    .eq('user_id', user.id) // Use user.id from getUser()
-    .maybeSingle(); // Fetch one or null
+  let goal, goalError;
+  try {
+      const result = await supabase
+        .from('user_goals') 
+        .select('id') // Select minimal field
+        .eq('user_id', user.id) // Use user.id from getUser()
+        .maybeSingle(); // Fetch one or null
+      goal = result.data;
+      goalError = result.error;
+      // <<< Log Query Result >>>
+      console.log(`Onboarding Page: Goal query result for user ${user.id} - Data:`, goal, "Error:", goalError);
+  } catch (queryError) {
+       console.error(`Onboarding Page: Exception during goal query for user ${user.id}:`, queryError);
+       goal = null; // Assume no goal if query itself fails
+       goalError = queryError; // Store the exception
+  }
 
   if (goalError) {
-    console.error("Error checking user goal status:", goalError.message);
-    // Consider redirecting to an error page or logging significantly
-    // Allowing to proceed might be confusing if goal check consistently fails
-    // For now, proceed to form, but log prominently
-    console.error("Proceeding to onboarding despite error checking goal status.")
+    // Logged above
+    console.error("Onboarding Page: Proceeding to onboarding despite error checking goal status.")
   }
 
   // 3. Redirect if Goal Exists (is truthy)
+  // <<< Log Check Outcome >>>
+  console.log(`Onboarding Page: Evaluating redirect condition. Does goal exist? ${!!goal}`);
   if (goal) {
-      console.log(`Onboarding Page: User ${user.id} already onboarded. Redirecting.`);
+      console.log(`Onboarding Page: User ${user.id} has goal data (${JSON.stringify(goal)}). Redirecting to /discover.`);
       redirect('/discover'); 
   }
 
