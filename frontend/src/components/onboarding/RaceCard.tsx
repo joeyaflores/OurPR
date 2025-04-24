@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { Race } from '@/lib/apiClient'; // Import the Race type
-import { ExternalLink, CalendarDays, Thermometer, BarChart, Mountain, PlusCircle, CheckCircle, AlertCircle, Trash2, Trophy, Clock } from 'lucide-react'; // Icons
+import { ExternalLink, CalendarDays, Thermometer, BarChart, Mountain, PlusCircle, CheckCircle, AlertCircle, Trash2, Trophy, Clock, Flag, Rocket } from 'lucide-react'; // Icons
 import { createClient } from '@/lib/supabase/client'; // Import Supabase client
 import type { User } from '@supabase/supabase-js';
 import { toast } from "sonner"; // Import toast
@@ -19,12 +19,13 @@ interface RaceCardProps {
   onRaceRemoved?: (raceId: string | number) => void; // Callback for successful removal
   userPr?: string | null; // Add optional prop for user's PR time string
   timeUntilRace?: string; // Add optional prop for time until race string
+  trainingSuggestion?: string | null; // Add optional prop for training suggestion
 }
 
 // Add API Base URL (consider moving to a config file)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
-export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr, timeUntilRace }: RaceCardProps) { // Destructure viewMode with default and onRaceRemoved
+export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr, timeUntilRace, trainingSuggestion }: RaceCardProps) { // Destructure viewMode with default and onRaceRemoved
     const supabase = createClient();
     const [user, setUser] = useState<User | null>(null);
     // State to track individual button states { [raceId]: ActionState }
@@ -164,6 +165,12 @@ export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr, t
         }
     };
 
+    // Handler for the placeholder generate button
+    const handleGeneratePlanClick = (e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent card click if needed
+        toast.info("Personalized training plan generation coming soon!");
+    };
+
     const renderStat = (IconComponent: React.ElementType, label: string, value: React.ReactNode | undefined | null, unit: string = '') => {
         if (value === undefined || value === null || value === '') return null;
         const displayValue = typeof value === 'string' || typeof value === 'number' ? `${value}${unit}` : value;
@@ -254,8 +261,17 @@ export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr, t
                  </div>
              )}
 
-             {race.flatness_score == null && race.pr_potential_score == null && race.average_temp_fahrenheit == null && race.total_elevation_gain == null && !userPr &&
-                 <p className="text-muted-foreground italic">More details coming soon.</p>}
+             {/* Display Training Suggestion if provided */} 
+             {trainingSuggestion && (
+                <div className="flex items-center text-sm text-green-700 dark:text-green-400 font-medium pt-1">
+                     <Flag className="mr-1.5 h-4 w-4 flex-shrink-0" /> 
+                     <span>{trainingSuggestion}</span>
+                 </div>
+             )}
+
+             {/* Adjust empty state check */}
+             {race.flatness_score == null && race.pr_potential_score == null && race.average_temp_fahrenheit == null && race.total_elevation_gain == null && !userPr && !trainingSuggestion &&
+                  <p className="text-muted-foreground italic">More details coming soon.</p>}
 
              {race.website_url && (
                 <div className="pt-1">
@@ -271,7 +287,8 @@ export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr, t
              )}
         </CardContent>
         <CardFooter className="pt-0 pb-3 border-t pt-3">
-            {displayButton && (
+            {/* Discover Mode: Original Button */} 
+            {viewMode === 'discover' && displayButton && (
                 <Button 
                     variant={buttonState === 'success' ? 'outline' : buttonVariant}
                     size="sm" 
@@ -279,7 +296,7 @@ export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr, t
                     disabled={isButtonDisabled}
                     onClick={(e) => { 
                         e.stopPropagation();
-                        finalButtonAction();
+                        finalButtonAction(); // Uses add/remove logic based on isInPlan
                     }}
                 >
                     {buttonState === 'loading' ? (
@@ -289,7 +306,7 @@ export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr, t
                     ) : buttonState === 'success' ? (
                         <>
                           <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> 
-                          {finalButtonAction === handleAddRaceToPlan ? 'Added!' : 'Removed!'}
+                          {finalButtonAction === handleAddRaceToPlan ? 'Added!' : 'Removed!'} 
                         </>
                     ) : buttonState === 'error' ? (
                         <>
@@ -301,6 +318,45 @@ export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr, t
                         </>
                     )}
                 </Button> 
+            )}
+
+            {/* Plan Mode: Generate Plan Button + Ghost Remove Button */} 
+            {viewMode === 'plan' && user && (
+                <div className="flex w-full gap-2"> 
+                    {/* Generate Plan Button (Placeholder) */} 
+                    <Button 
+                        variant="default" // Primary button style
+                        size="sm" 
+                        className="flex-grow" // Takes available space
+                        onClick={handleGeneratePlanClick}
+                    >
+                        <Rocket className="mr-2 h-4 w-4" /> Generate Plan
+                    </Button>
+
+                    {/* Remove Button (Less prominent) */} 
+                    <Button 
+                        variant="ghost" // Ghost style for secondary action
+                        size="icon" 
+                        className="text-destructive hover:bg-destructive/10 flex-shrink-0" // Keep color, prevent grow/shrink
+                        // Disable remove button if not logged in, or if any action is loading/successful
+                        disabled={!user || buttonState === 'loading' || buttonState === 'success'} 
+                        onClick={(e) => {
+                             e.stopPropagation();
+                             handleRemoveRaceFromPlan(); // Directly call remove handler
+                        }}
+                    >
+                         {buttonState === 'loading' && finalButtonAction === handleRemoveRaceFromPlan ? (
+                             <span className="h-4 w-4 animate-spin border-2 border-current border-t-transparent rounded-full" />
+                         ) : buttonState === 'success' && finalButtonAction === handleRemoveRaceFromPlan ? (
+                             <CheckCircle className="h-4 w-4 text-green-600" /> 
+                         ) : buttonState === 'error' && finalButtonAction === handleRemoveRaceFromPlan ? (
+                             <AlertCircle className="h-4 w-4 text-destructive" />
+                         ) : (
+                             <Trash2 className="h-4 w-4" />
+                         )}
+                        <span className="sr-only">Remove from Plan</span>
+                    </Button>
+                 </div>
             )}
         </CardFooter>
     </Card>

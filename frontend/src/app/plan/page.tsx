@@ -8,7 +8,16 @@ import type { Race } from '@/lib/apiClient'; // Or your correct Race type path
 import type { UserPr } from '@/types/user_pr'; // <-- Import UserPr type
 import { Skeleton } from "@/components/ui/skeleton"; // For loading state
 import { AlertCircle } from 'lucide-react'; // For error state
-import { differenceInDays, differenceInWeeks, formatDistanceToNowStrict, isToday, isPast, parseISO } from 'date-fns'; // <-- Import date-fns functions
+import { 
+    differenceInDays, 
+    differenceInWeeks, 
+    formatDistanceToNowStrict, 
+    isToday, 
+    isPast, 
+    parseISO, 
+    subWeeks, // <-- Import subWeeks
+    format // <-- Import format (for peak date)
+} from 'date-fns'; // <-- Import date-fns functions
 
 // Add API Base URL (consider moving to a config file or env var)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -188,10 +197,13 @@ export default function MyPlanPage() {
 
                         // Calculate time until race
                         let timeUntilRaceString = "Date TBD";
+                        let raceDate: Date | null = null;
+                        let weeksUntil: number | null = null;
                         if (race.date) {
                             try {
-                                const raceDate = parseISO(race.date); // Use parseISO for ISO strings
+                                raceDate = parseISO(race.date); // Store parsed date
                                 const now = new Date();
+                                weeksUntil = differenceInWeeks(raceDate, now);
                                 
                                 if (isToday(raceDate)) {
                                     timeUntilRaceString = "Today!";
@@ -200,19 +212,50 @@ export default function MyPlanPage() {
                                 } else {
                                     const daysUntil = differenceInDays(raceDate, now);
                                     if (daysUntil < 14) {
-                                        // Show days if less than 2 weeks
                                         timeUntilRaceString = `in ${daysUntil + 1} day${daysUntil === 0 ? '' : 's'}`;
                                     } else {
-                                        // Show weeks otherwise
-                                        const weeksUntil = differenceInWeeks(raceDate, now);
                                         timeUntilRaceString = `in ${weeksUntil} week${weeksUntil === 1 ? '' : 's'}`;
                                     }
-                                    // More robust alternative using formatDistanceToNowStrict:
-                                    // timeUntilRaceString = `in ${formatDistanceToNowStrict(raceDate)}`; 
                                 }
                             } catch (e) {
                                 console.error("Error parsing race date:", race.date, e);
                                 timeUntilRaceString = "Invalid Date";
+                                raceDate = null; // Reset on error
+                                weeksUntil = null;
+                            }
+                        }
+                        
+                        // Calculate Training Suggestion
+                        let trainingSuggestion: string | null = null;
+                        const MIN_WEEKS_FOR_SUGGESTION = 6; // Only suggest if race is far enough away
+
+                        if (raceDate && weeksUntil && weeksUntil >= MIN_WEEKS_FOR_SUGGESTION) {
+                            let peakDistance = "";
+                            let peakWeekOffset = 3; // Default peak 3 weeks out
+
+                            switch (race.distance) {
+                                case 'Half Marathon':
+                                    peakDistance = "~10-12 mi";
+                                    peakWeekOffset = 2; // Peak 2 weeks out for HM
+                                    break;
+                                case 'Marathon':
+                                    peakDistance = "~18-20 mi";
+                                    peakWeekOffset = 3; // Peak 3 weeks out for M
+                                    break;
+                                // Add cases for Ultras if desired
+                                // case '50K': ...
+                            }
+
+                            if (peakDistance) {
+                                try {
+                                    const peakDate = subWeeks(raceDate, peakWeekOffset);
+                                    // Format date like "Oct 14th"
+                                    const formattedPeakDate = format(peakDate, "MMM do"); 
+                                    trainingSuggestion = `Peak Run: ${peakDistance} (Week of ${formattedPeakDate})`;
+                                } catch(e) {
+                                     console.error("Error calculating peak date:", e);
+                                     // Don't show suggestion if date math fails
+                                }
                             }
                         }
 
@@ -224,6 +267,7 @@ export default function MyPlanPage() {
                                 onRaceRemoved={handleRaceRemoved}
                                 userPr={prTimeString}
                                 timeUntilRace={timeUntilRaceString}
+                                trainingSuggestion={trainingSuggestion}
                             />
                         );
                     })}
