@@ -20,12 +20,23 @@ interface RaceCardProps {
   userPr?: string | null; // Add optional prop for user's PR time string
   timeUntilRace?: string; // Add optional prop for time until race string
   trainingSuggestion?: string | null; // Add optional prop for training suggestion
+  onGeneratePlanRequest: (raceId: string | number) => void; // Callback to request plan generation
+  isGeneratingPlan: boolean; // Prop indicating if plan generation is in progress for this card
 }
 
 // Add API Base URL (consider moving to a config file)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
-export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr, timeUntilRace, trainingSuggestion }: RaceCardProps) { // Destructure viewMode with default and onRaceRemoved
+export function RaceCard({ 
+    race, 
+    viewMode = 'discover', 
+    onRaceRemoved, 
+    userPr, 
+    timeUntilRace,
+    trainingSuggestion,
+    onGeneratePlanRequest, // Destructure new prop
+    isGeneratingPlan // Destructure new prop
+}: RaceCardProps) { 
     const supabase = createClient();
     const [user, setUser] = useState<User | null>(null);
     // State to track individual button states { [raceId]: ActionState }
@@ -168,7 +179,10 @@ export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr, t
     // Handler for the placeholder generate button
     const handleGeneratePlanClick = (e: React.MouseEvent) => {
         e.stopPropagation(); // Prevent card click if needed
-        toast.info("Personalized training plan generation coming soon!");
+        // Call the parent handler, passing the race ID
+        onGeneratePlanRequest(race.id);
+        // Parent component (MyPlanPage) will manage loading state & modal display
+        // toast.info("Personalized training plan generation coming soon!"); // Remove toast
     };
 
     const renderStat = (IconComponent: React.ElementType, label: string, value: React.ReactNode | undefined | null, unit: string = '') => {
@@ -329,8 +343,18 @@ export function RaceCard({ race, viewMode = 'discover', onRaceRemoved, userPr, t
                         size="sm" 
                         className="flex-grow" // Takes available space
                         onClick={handleGeneratePlanClick}
+                        disabled={isGeneratingPlan || !user} // Disable if generating or not logged in
                     >
-                        <Rocket className="mr-2 h-4 w-4" /> Generate Plan
+                        {isGeneratingPlan ? (
+                            <>
+                                <span className="mr-2 h-4 w-4 animate-spin border-2 border-current border-t-transparent rounded-full" />
+                                Generating...
+                            </>
+                        ) : (
+                            <>
+                                <Rocket className="mr-2 h-4 w-4" /> Generate Plan
+                            </>
+                        )}
                     </Button>
 
                     {/* Remove Button (Less prominent) */} 

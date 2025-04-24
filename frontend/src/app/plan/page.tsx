@@ -6,8 +6,19 @@ import type { User } from '@supabase/supabase-js';
 import { RaceCard } from '@/components/onboarding/RaceCard'; // Assuming RaceCard is here or adjust path
 import type { Race } from '@/lib/apiClient'; // Or your correct Race type path
 import type { UserPr } from '@/types/user_pr'; // <-- Import UserPr type
+import type { TrainingPlanOutline } from '@/types/training_plan'; // <-- Import TrainingPlanOutline type
 import { Skeleton } from "@/components/ui/skeleton"; // For loading state
-import { AlertCircle } from 'lucide-react'; // For error state
+import { AlertCircle, Loader2 } from 'lucide-react'; // For error state
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogClose, // Import DialogClose
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"; // Import Button
+import { TrainingPlanDisplay } from '@/components/plan/TrainingPlanDisplay'; // <-- Import the display component
 import { 
     differenceInDays, 
     differenceInWeeks, 
@@ -47,6 +58,13 @@ export default function MyPlanPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // State for plan generation and modal display
+    const [isPlanGenerating, setIsPlanGenerating] = useState(false);
+    const [planGenerationError, setPlanGenerationError] = useState<string | null>(null);
+    const [selectedRaceIdForPlan, setSelectedRaceIdForPlan] = useState<string | number | null>(null);
+    const [currentPlanOutline, setCurrentPlanOutline] = useState<TrainingPlanOutline | null>(null);
+    const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+
     // Function to handle removal from the page's state
     const handleRaceRemoved = (removedRaceId: string | number) => {
         setPlannedRaces(currentRaces => 
@@ -63,6 +81,9 @@ export default function MyPlanPage() {
             setError(null);
             setPlannedRaces([]); // Reset state
             setUserPrs([]); // Reset state
+            setCurrentPlanOutline(null); // Reset plan on page load/user change
+            setPlanGenerationError(null);
+            setIsPlanModalOpen(false);
 
             const { data: { session }, error: sessionError } = await supabase.auth.getSession();
             const currentUser = session?.user ?? null;
@@ -143,6 +164,58 @@ export default function MyPlanPage() {
 
         fetchUserAndPlanAndPrs();
     }, [supabase]); // Re-run if supabase client instance changes
+
+    // --- Function to handle plan generation request --- 
+    const handleGeneratePlanRequest = async (raceId: string | number) => {
+        console.log(`Requesting plan generation for race ID: ${raceId}`);
+        setIsPlanGenerating(true);
+        setPlanGenerationError(null);
+        setCurrentPlanOutline(null);
+        setSelectedRaceIdForPlan(raceId); // Track which card is loading
+        setIsPlanModalOpen(false); // Close modal if it was open for another plan
+
+        const { data: { session } } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
+
+        if (!accessToken) {
+            setPlanGenerationError("Authentication error: Cannot generate plan.");
+            setIsPlanGenerating(false);
+            setSelectedRaceIdForPlan(null);
+            return;
+        }
+
+        const url = `${API_BASE_URL}/api/users/me/generate-plan/${raceId}`;
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}` },
+            });
+
+            if (!response.ok) {
+                let errorDetail = `API error: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorDetail = errorData.detail || errorDetail;
+                } catch { /* Ignore if error body is not JSON */ }
+                throw new Error(errorDetail);
+            }
+
+            const planData: TrainingPlanOutline = await response.json();
+            setCurrentPlanOutline(planData);
+            setIsPlanModalOpen(true); // Open modal on success
+            console.log("Successfully generated plan:", planData);
+
+        } catch (e: any) {
+            console.error("Failed to generate training plan:", e);
+            setPlanGenerationError(e.message || "An unexpected error occurred during plan generation.");
+            // Optionally open the modal to show the error? Or show inline?
+             setIsPlanModalOpen(true); // Open modal even on error to show message
+        } finally {
+            setIsPlanGenerating(false);
+             // Don't reset selectedRaceIdForPlan here, RaceCard uses it to stop its spinner
+        }
+    };
 
     const PlanSkeleton = () => (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -268,11 +341,51 @@ export default function MyPlanPage() {
                                 userPr={prTimeString}
                                 timeUntilRace={timeUntilRaceString}
                                 trainingSuggestion={trainingSuggestion}
+                                onGeneratePlanRequest={handleGeneratePlanRequest}
+                                isGeneratingPlan={isPlanGenerating && selectedRaceIdForPlan === race.id}
                             />
                         );
                     })}
                 </div>
             )}
+
+            {/* Plan Display Modal */} 
+            <Dialog open={isPlanModalOpen} onOpenChange={setIsPlanModalOpen}>
+                 <DialogContent className="max-w-md sm:max-w-lg md:max-w-2xl max-h-[80vh] overflow-y-auto"> 
+                    <DialogHeader>
+                        <DialogTitle>{planGenerationError ? "Error Generating Plan" : "Generated Training Plan"}</DialogTitle>
+                        {currentPlanOutline && !planGenerationError && (
+                             <DialogDescription>
+                                 Outline for {currentPlanOutline.race_name} ({currentPlanOutline.race_distance}). Adjust based on your experience and how you feel.
+                             </DialogDescription>
+                        )}
+                         {planGenerationError && (
+                             <DialogDescription className="text-red-600">
+                                 {planGenerationError}
+                             </DialogDescription>
+                        )}
+                    </DialogHeader>
+                    
+                    {/* Display Loading inside Modal */} 
+                    {isPlanGenerating && !currentPlanOutline && !planGenerationError && (
+                         <div className="flex justify-center items-center py-10">
+                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                             <span className="ml-2">Generating your plan...</span>
+                         </div>
+                     )}
+
+                    {/* Display Plan or Error */} 
+                    {!isPlanGenerating && currentPlanOutline && !planGenerationError && (
+                        <TrainingPlanDisplay plan={currentPlanOutline} />
+                    )}
+
+                    {/* Close Button */} 
+                    <DialogClose asChild>
+                        <Button type="button" variant="outline" className="mt-4">Close</Button>
+                    </DialogClose>
+                </DialogContent>
+            </Dialog>
+
         </div>
     );
 }
