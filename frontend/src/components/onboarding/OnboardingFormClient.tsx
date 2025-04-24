@@ -84,6 +84,7 @@ export default function OnboardingFormClient() { // Rename component
   const [error, setError] = useState<string | null>(null);
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [submittedGoalData, setSubmittedGoalData] = useState<UserGoalPayload | null>(null);
   const router = useRouter(); // Initialize router
 
   // --- Get Geolocation --- 
@@ -154,6 +155,8 @@ export default function OnboardingFormClient() { // Rename component
         payload.goal_time = `${hours}:${minutes}:${seconds}`;
     }
 
+    setSubmittedGoalData(payload);
+
     if (isExploring) {
         console.log("Exploring only, potentially submitting minimal goal data...");
     }
@@ -169,9 +172,6 @@ export default function OnboardingFormClient() { // Rename component
         console.log("Recommendations received:", fetchedRecommendations);
 
         setStep(2);
-        // Consider adding a slight delay before redirecting from step 2
-        // Or add a specific "Continue" button in step 2
-        // setTimeout(() => router.push('/discover'), 5000); // Example redirect after 5s
 
     } catch (err) {
         console.error("Onboarding API Error:", err);
@@ -387,7 +387,17 @@ export default function OnboardingFormClient() { // Rename component
         <Card className="w-full max-w-2xl">
             <CardHeader>
                 <CardTitle className="text-2xl">Your Recommended Races</CardTitle>
-                <CardDescription>Based on your goals, here are some PR-friendly races.</CardDescription>
+                {submittedGoalData && (
+                     <CardDescription>
+                         Based on your goal{submittedGoalData.goal_distance ? ` of ${submittedGoalData.goal_distance}` : ''}
+                         {submittedGoalData.goal_time ? ` in ${submittedGoalData.goal_time}` : ''}
+                         {submittedGoalData.goal_race_name ? ` for the ${submittedGoalData.goal_race_name}` : ''}
+                         {submittedGoalData.goal_race_date ? ` around ${format(new Date(submittedGoalData.goal_race_date), 'PPP')}` : ''}:
+                     </CardDescription>
+                )} 
+                 {!submittedGoalData && (
+                     <CardDescription>Here are some PR-friendly races we found for you:</CardDescription>
+                 )}
             </CardHeader>
             <CardContent className="space-y-4">
                  {isLoading && (

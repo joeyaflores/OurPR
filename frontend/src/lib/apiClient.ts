@@ -19,13 +19,22 @@ export interface Race {
   city?: string | null;
   state?: string | null;
   distance?: string | null;
-  race_date?: string | null; // YYYY-MM-DD format
+  date?: string | null; // <<< Change race_date to date >>>
   website_url?: string | null;
   flatness_score?: number | null;
   average_temp_fahrenheit?: number | null;
-  historical_pr_rate?: number | null;
-  latitude?: number | null;
-  longitude?: number | null;
+  historical_pr_rate?: number | null; // <<< Check if this is still used, or replaced by pr_potential_score
+  pr_potential_score?: number | null; // <<< Add based on model
+  lat?: number | null; // <<< Add based on model
+  lng?: number | null; // <<< Add based on model
+  ai_summary?: string | null; // <<< Add based on model
+  total_elevation_gain?: number | null; // <<< Add based on model
+  similar_runners_count?: number | null; // <<< Add based on model
+  training_groups_count?: number | null; // <<< Add based on model
+  similar_pace_runners_count?: number | null; // <<< Add based on model
+  view_count?: number; // <<< Add based on model
+  save_count?: number; // <<< Add based on model
+  plan_count?: number; // <<< Add based on model
   // Add other fields returned by the backend Race model as needed
 }
 

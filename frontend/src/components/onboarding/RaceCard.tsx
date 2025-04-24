@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { Race } from '@/lib/apiClient'; // Import the Race type
-import { ExternalLink, CalendarDays, Thermometer, BarChart } from 'lucide-react'; // Icons
+import { ExternalLink, CalendarDays, Thermometer, BarChart, Mountain } from 'lucide-react'; // Icons
 
 interface RaceCardProps {
   race: Race;
@@ -14,23 +14,26 @@ interface RaceCardProps {
 export function RaceCard({ race, onAddToPlan }: RaceCardProps) {
 
     const renderStat = (IconComponent: React.ElementType, label: string, value: React.ReactNode | undefined | null, unit: string = '') => {
-        if (value === undefined || value === null) return null;
+        if (value === undefined || value === null || value === '') return null;
         const displayValue = typeof value === 'string' || typeof value === 'number' ? `${value}${unit}` : value;
         return (
             <div className="flex items-center text-sm text-muted-foreground">
-                <IconComponent className="mr-1.5 h-4 w-4" />
+                <IconComponent className="mr-1.5 h-4 w-4 flex-shrink-0" />
                 <span>{label}: {displayValue}</span>
             </div>
         );
     };
 
     const renderStars = (score: number | null | undefined): React.ReactNode => {
-        if (score === null || score === undefined || score < 1 || score > 5) {
+        const numericScore = Number(score); 
+        if (isNaN(numericScore) || numericScore < 1 || numericScore > 5) {
              return <span className="text-muted-foreground">(N/A)</span>; 
         }
+        const roundedScore = Math.round(numericScore);
         return (
-             <span title={`${score}/5`} className="ml-1">
-                 {'★'.repeat(score)}{'☆'.repeat(5 - score)}
+             <span title={`${roundedScore}/5`} className="ml-1 inline-flex items-center">
+                 <span className="text-yellow-500">{'★'.repeat(roundedScore)}</span>
+                 <span>{'☆'.repeat(5 - roundedScore)}</span>
              </span>
         );
      };
@@ -41,18 +44,17 @@ export function RaceCard({ race, onAddToPlan }: RaceCardProps) {
             <CardTitle className="text-lg font-semibold">{race.name}</CardTitle>
             <CardDescription className="flex items-center text-sm">
                  <CalendarDays className="mr-1.5 h-4 w-4" />
-                 {race.race_date ? format(new Date(race.race_date), "PPP") : "Date TBD"}
+                 {race.date ? format(new Date(race.date), "PPP") : "Date TBD"}
                  {race.distance ? <span className="ml-2 font-medium">({race.distance})</span> : ''}
             </CardDescription>
         </CardHeader>
         <CardContent className="text-sm space-y-2 pt-0 pb-4">
              {renderStat(BarChart, "Flatness", renderStars(race.flatness_score))}
+             {renderStat(Mountain, "Elevation Gain", race.total_elevation_gain, " ft")}
+             {renderStat(BarChart, "PR Potential", renderStars(race.pr_potential_score))}
              {renderStat(Thermometer, "Avg Temp", race.average_temp_fahrenheit, "°F")}
-             {typeof race.historical_pr_rate === 'number' && 
-                renderStat(BarChart, "Est. PR Rate", `${race.historical_pr_rate.toFixed(1)}%`) 
-             }
             
-             {race.flatness_score === null && race.historical_pr_rate === null && race.average_temp_fahrenheit === null &&
+             {race.flatness_score === null && race.pr_potential_score === null && race.average_temp_fahrenheit === null &&
                 <p className="text-muted-foreground italic">More details coming soon.</p>}
 
              {race.website_url && (

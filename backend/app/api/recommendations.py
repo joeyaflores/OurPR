@@ -109,38 +109,56 @@ def get_recommended_races(
             query = query.eq('state', user_location['state'])
     # TODO: Add radius-based filtering if lat/lon and PostGIS are available
 
-    # Execute the query
+    # Execute the initial query based on user goal
     try:
-        # Use base_supabase
+        print(f"Executing initial race query for user {user_id}...")
         race_response = query.execute()
-        # Add error check
-        # if hasattr(race_response, 'error') and race_response.error:
-        #    print(f"Supabase DB Error (Fetching Races): {race_response.error}")
-        #    raise HTTPException(status_code=race_response.status_code or 500, detail=race_response.error.message)
         races = race_response.data
+        print(f"Initial query found {len(races) if races else 0} races.")
+
+        # <<< Fallback Logic >>>
+        if not races:
+            print(f"Initial query empty. Executing fallback query for user {user_id}...")
+            fallback_query = base_supabase.table('races')\
+                .select("*")\
+                .gte('date', today.isoformat()) \
+                .order('date', desc=False) \
+                .limit(20)
+            
+            fallback_response = fallback_query.execute()
+            if fallback_response and fallback_response.data:
+                races = fallback_response.data # Overwrite races with fallback results
+                print(f"Fallback query found {len(races)} races.")
+            else:
+                # Handle case where fallback also fails or returns empty
+                print(f"Fallback query also returned no data or failed. Response: {fallback_response}")
+                races = [] # Ensure races is an empty list
+        # <<< End Fallback Logic >>>
+            
     except Exception as e:
-        print(f"Error fetching races: {e}")
+        print(f"Error fetching races (initial or fallback): {e}")
         raise HTTPException(status_code=500, detail="Could not retrieve race data.")
 
+    # If still no races after fallback, return empty list
     if not races:
-        return [] # No races found matching criteria
+        print(f"No races found for user {user_id} after fallback.")
+        return []
 
     # 4. Rank Races (Simple Ranking)
-    # Prioritize flatter races (higher flatness_score) and those with higher PR rates
-    # Handle None values gracefully
+    print(f"Ranking {len(races)} races...")
     def sort_key(race):
         flatness = race.get('flatness_score', 0) or 0
-        pr_rate = race.get('historical_pr_rate', 0) or 0
-        # Add other factors? Weather? Lower is better for temp?
-        # avg_temp = race.get('average_temp_fahrenheit', 70) or 70
-        # return (-flatness, -pr_rate, avg_temp) # Example: flatter, higher PR rate, cooler temp preferred
-        return (-flatness, -pr_rate)
+        # Use pr_potential_score from the model if available, otherwise historical_pr_rate
+        pr_potential = race.get('pr_potential_score', 0) or 0
+        # historical_pr_rate = race.get('historical_pr_rate', 0) or 0 # Keep if needed
+        return (-flatness, -pr_potential) # Prioritize flat, then high PR potential
 
     ranked_races = sorted(races, key=sort_key)
 
     # 5. Return Top N Recommendations (e.g., top 5)
     top_n = 5
     recommended_races_data = ranked_races[:top_n]
+    print(f"Returning top {len(recommended_races_data)} recommendations.")
 
     # Parse data with Pydantic model
     try:
