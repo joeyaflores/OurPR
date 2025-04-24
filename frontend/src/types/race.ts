@@ -15,6 +15,7 @@ export interface Race {
   similar_runners_count?: number;
   training_groups_count?: number;
   similar_pace_runners_count?: number;
+  image_url?: string | null;
   // Add other fields from Pydantic model if needed for type consistency
   flatness_score?: number;
   view_count?: number;
