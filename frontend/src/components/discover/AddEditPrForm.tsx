@@ -168,19 +168,19 @@ export function AddEditPrForm({
           control={form.control}
           name="date"
           render={({ field }) => (
-            <FormItem className="flex flex-col">
+            <FormItem>
               <FormLabel>Date *</FormLabel>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant={"outline"}
                     className={cn(
-                      "w-full pl-3 text-left font-normal",
+                      "w-full mt-1 pl-3 text-left font-normal",
                       !field.value && "text-muted-foreground"
                     )}
                   >
                     {field.value ? (
-                      format(field.value, "PPP") // More readable date format
+                      format(field.value, "PPP")
                     ) : (
                       <span>Pick a date</span>
                     )}
@@ -193,7 +193,7 @@ export function AddEditPrForm({
                     selected={field.value}
                     onSelect={field.onChange}
                     disabled={(date) =>
-                      date > new Date() || date < new Date("1900-01-01") // Prevent future dates
+                      date > new Date() || date < new Date("1900-01-01")
                     }
                     initialFocus
                   />
