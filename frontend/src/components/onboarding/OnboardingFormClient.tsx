@@ -427,7 +427,7 @@ export default function OnboardingFormClient() { // Rename component
                  </Button>
                  {/* Button to continue to the main app */}
                   <Button onClick={handleContinue} disabled={isLoading}>
-                      Continue to App
+                      Continue to OurPR
                  </Button>
              </CardFooter>
         </Card>

@@ -121,16 +121,21 @@ def get_recommended_races(
             print(f"Initial query empty. Executing fallback query for user {user_id}...")
             fallback_query = base_supabase.table('races')\
                 .select("*")\
-                .gte('date', today.isoformat()) \
-                .order('date', desc=False) \
-                .limit(20)
+                .gte('date', today.isoformat()) # Only future races
+            
+            # <<< Apply distance filter to fallback if provided in goal >>>
+            if user_goal and user_goal.goal_distance:
+                print(f"Applying goal distance '{user_goal.goal_distance}' to fallback query.")
+                fallback_query = fallback_query.eq('distance', user_goal.goal_distance)
+                
+            # Add order by date and limit
+            fallback_query = fallback_query.order('date', desc=False).limit(20) 
             
             fallback_response = fallback_query.execute()
             if fallback_response and fallback_response.data:
                 races = fallback_response.data # Overwrite races with fallback results
                 print(f"Fallback query found {len(races)} races.")
             else:
-                # Handle case where fallback also fails or returns empty
                 print(f"Fallback query also returned no data or failed. Response: {fallback_response}")
                 races = [] # Ensure races is an empty list
         # <<< End Fallback Logic >>>

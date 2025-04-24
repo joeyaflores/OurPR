@@ -112,6 +112,19 @@ export default function DiscoverPage() {
   const fetchAiRaces = useCallback(async (query: string) => {
     setIsLoading(true);
     setError(null);
+
+    // <<< Get Supabase client and token >>>
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
+    if (!token) {
+        setError("User not authenticated to perform AI search. Please log in.");
+        setIsLoading(false);
+        setRaces([]); // Clear races if not authenticated
+        return; // Stop fetching if no token
+    }
+
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
     // Ensure the correct endpoint path
     const url = new URL('/api/race-query/ai', baseUrl); 
@@ -122,11 +135,16 @@ export default function DiscoverPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`, // <<< Add Authorization header >>>
         },
         body: JSON.stringify({ query: query })
       });
 
       if (!response.ok) {
+        // Handle specific auth error vs other errors
+        if (response.status === 401) {
+             throw new Error("Authentication failed. Please log in again.");
+        }
         const errorData = await response.json();
         throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
       }
