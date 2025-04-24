@@ -1,16 +1,25 @@
 "use client"; // Map will require client-side interaction
 
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet'; // Import Leaflet library itself
 import { Race } from '@/types/race'; // Import Race type
 import { useEffect, useState } from 'react';
 
 // --- Icon Setup ---
-// Import the images using require
-const markerIcon2x = require('leaflet/dist/images/marker-icon-2x.png');
-const markerIcon = require('leaflet/dist/images/marker-icon.png');
-const markerShadow = require('leaflet/dist/images/marker-shadow.png');
+// Import the images using require is causing issues, let's revert to standard import if possible
+// If these are truly needed via require, ensure build process handles them
+// import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+// import markerIcon from 'leaflet/dist/images/marker-icon.png';
+// import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+
+// Fix for default icon path issues with bundlers like Webpack
+// delete (L.Icon.Default.prototype as any)._getIconUrl;
+// L.Icon.Default.mergeOptions({
+//   iconRetinaUrl: markerIcon2x.src, // Use .src if using standard import
+//   iconUrl: markerIcon.src,
+//   shadowUrl: markerShadow.src,
+// });
 
 // Define color mapping for distances
 const distanceColors = {
@@ -156,9 +165,6 @@ interface MapViewProps {
   error: string | null;
 }
 
-// Commented out as per last working step
-// delete (L.Icon.Default.prototype as any)._getIconUrl;
-
 // Internal component to handle map interactions that require the map instance
 const MapInteractionHandler: React.FC<{ selectedRaceId: string | number | null, races: Race[] }> = ({ selectedRaceId, races }) => {
   const map = useMap(); // This is valid here, inside MapContainer context
@@ -192,6 +198,13 @@ const MapInteractionHandler: React.FC<{ selectedRaceId: string | number | null, 
 // Update component signature to accept props
 export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceId, selectedRaceId, onRaceSelect, isLoading, error }) => {
   
+  const [isClient, setIsClient] = useState(false); // <-- Add state
+
+  // Set isClient to true only on the client side after mount
+  useEffect(() => { // <-- Add effect
+    setIsClient(true);
+  }, []);
+
   // Find the first race WITH valid coordinates for the default center
   const firstRaceWithCoords = races.find(r => r.lat != null && r.lng != null);
   
@@ -202,6 +215,16 @@ export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceI
 
   const defaultZoom = firstRaceWithCoords ? 9 : 4; // Zoom in closer if we have races with coords
 
+  // Conditionally render MapContainer only on the client
+  if (!isClient) { // <-- Add conditional check
+    // You could return a placeholder/skeleton here instead of null
+    return (
+       <div className={`aspect-video w-full bg-muted rounded-lg flex items-center justify-center border ${className || ''}`}>
+         <p className="text-muted-foreground">Loading Map...</p>
+       </div>
+    );
+  }
+  
   return (
     <div className="relative w-full h-full">
       <MapContainer center={defaultCenter} zoom={defaultZoom} scrollWheelZoom={true} style={{ height: '100%', width: '100%' }} className={`rounded-lg border z-0 ${className || ''}`}>
@@ -282,16 +305,18 @@ export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceI
                   )}
                 </div>
               </Popup>
+              <Tooltip sticky>
+                {race.name}
+              </Tooltip>
             </Marker>
           );
         })}
 
-        {/* Render the interaction handler component *inside* MapContainer */}
-        <MapInteractionHandler selectedRaceId={selectedRaceId} races={races} />
+        {/* Custom MapLegend component rendered inside MapContainer */}
+        <MapLegend /> 
+        {/* Internal component for handling map interactions */}
+        <MapInteractionHandler selectedRaceId={selectedRaceId} races={races} /> 
       </MapContainer>
-      
-      {/* Add the legend */}
-      <MapLegend />
     </div>
   );
 }; 

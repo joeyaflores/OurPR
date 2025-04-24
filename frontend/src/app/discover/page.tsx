@@ -27,6 +27,8 @@ export default function DiscoverPage() {
   const [selectedRaceId, setSelectedRaceId] = useState<string | number | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
+  // Debounce date range selection to avoid excessive fetching
+  const debouncedDateRange = useDebounce(selectedDateRange, 500);
   const [showTrending, setShowTrending] = useState<boolean>(false);
   const [showPopular, setShowPopular] = useState<boolean>(false);
 
@@ -52,11 +54,12 @@ export default function DiscoverPage() {
     if (showFlatOnly) {
       params.append('flat_only', 'true');
     }
-    if (selectedDateRange?.from) {
-      params.append('start_date', format(selectedDateRange.from, 'yyyy-MM-dd'));
+    // Use the debounced date range for fetching
+    if (debouncedDateRange?.from) {
+      params.append('start_date', format(debouncedDateRange.from, 'yyyy-MM-dd'));
     }
-    if (selectedDateRange?.to) {
-      params.append('end_date', format(selectedDateRange.to, 'yyyy-MM-dd'));
+    if (debouncedDateRange?.to) {
+      params.append('end_date', format(debouncedDateRange.to, 'yyyy-MM-dd'));
     }
     // TODO: Add trending/popular/pagination params later
 
@@ -78,7 +81,7 @@ export default function DiscoverPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDistance, showFlatOnly, selectedDateRange]); // Dependencies for filtered fetch
+  }, [selectedDistance, showFlatOnly, debouncedDateRange]); // Dependencies for filtered fetch
 
   // New: Fetches races based on AI search query
   const fetchAiRaces = useCallback(async (query: string) => {
@@ -133,6 +136,12 @@ export default function DiscoverPage() {
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(event.target.value);
   };
+  
+  // New handler to wrap date range setting and log the value
+  const handleDateRangeChange = (range: DateRange | undefined) => {
+    console.log("Calendar onSelect triggered with range:", range); // <-- Log the range
+    setSelectedDateRange(range); // Call the original state setter
+  };
 
   return (
     <main className="flex flex-col items-center min-h-screen py-8 px-4 md:px-6 lg:px-8">
@@ -156,7 +165,7 @@ export default function DiscoverPage() {
           showFlatOnly={showFlatOnly}
           onFlatnessChange={setShowFlatOnly}
           selectedDateRange={selectedDateRange}
-          onDateRangeChange={setSelectedDateRange}
+          onDateRangeChange={handleDateRangeChange} // <-- Pass the new handler
           // Keep placeholder filters, they don't affect fetchRaces yet
           showTrending={showTrending}
           onTrendingChange={setShowTrending}
