@@ -10,6 +10,7 @@ import { DateRange } from "react-day-picker";
 import { format } from 'date-fns'; // Keep format for date query params
 import { useDebounce } from "@/hooks/useDebounce";
 import { PRTimeline } from "@/components/discover/PRTimeline";
+import { createClient } from "@/lib/supabase/client"; // <<< Import Supabase client
 
 // REMOVE MOCK DATA
 // const MOCK_RACES: Race[] = [ ... ];
@@ -43,6 +44,19 @@ export default function DiscoverPage() {
   const fetchFilteredRaces = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    
+    // <<< Get Supabase client and token >>>
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
+    if (!token) {
+        setError("User not authenticated. Please log in.");
+        setIsLoading(false);
+        setRaces([]); // Clear races if not authenticated
+        return; // Stop fetching if no token
+    }
+
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'; 
     const url = new URL('/api/races', baseUrl);
     const params = new URLSearchParams();
@@ -54,7 +68,6 @@ export default function DiscoverPage() {
     if (showFlatOnly) {
       params.append('flat_only', 'true');
     }
-    // Use the debounced date range for fetching
     if (debouncedDateRange?.from) {
       params.append('start_date', format(debouncedDateRange.from, 'yyyy-MM-dd'));
     }
@@ -67,8 +80,19 @@ export default function DiscoverPage() {
     console.log("Fetching filtered races from:", url.toString());
 
     try {
-      const response = await fetch(url.toString());
+      // <<< Add headers to fetch options >>>
+      const response = await fetch(url.toString(), {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          // Add other headers like Content-Type if needed, though GET usually doesn't need it
+        }
+      });
+      
       if (!response.ok) {
+        // Handle specific auth error vs other errors
+        if (response.status === 401) {
+             throw new Error("Authentication failed. Please log in again.");
+        }
         const errorData = await response.json();
         throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
       }
@@ -81,12 +105,26 @@ export default function DiscoverPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDistance, showFlatOnly, debouncedDateRange]); // Dependencies for filtered fetch
+  // Include token in dependencies? No, getSession should handle it.
+  }, [selectedDistance, showFlatOnly, debouncedDateRange]); 
 
   // New: Fetches races based on AI search query
   const fetchAiRaces = useCallback(async (query: string) => {
     setIsLoading(true);
     setError(null);
+
+    // <<< Get Supabase client and token >>>
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
+    if (!token) {
+        setError("User not authenticated to perform AI search. Please log in.");
+        setIsLoading(false);
+        setRaces([]); // Clear races if not authenticated
+        return; // Stop fetching if no token
+    }
+
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
     // Ensure the correct endpoint path
     const url = new URL('/api/race-query/ai', baseUrl); 
@@ -97,11 +135,16 @@ export default function DiscoverPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`, // <<< Add Authorization header >>>
         },
         body: JSON.stringify({ query: query })
       });
 
       if (!response.ok) {
+        // Handle specific auth error vs other errors
+        if (response.status === 401) {
+             throw new Error("Authentication failed. Please log in again.");
+        }
         const errorData = await response.json();
         throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
       }

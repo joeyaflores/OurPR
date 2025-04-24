@@ -5,9 +5,12 @@ from typing import List, Optional, Dict, Any
 import os
 import json
 import google.generativeai as genai
+from datetime import date
 
 from ..services.supabase_client import get_supabase_client
 from ..models.race import Race # Import the Race model
+from ..api.auth import get_current_user
+from gotrue.types import User as SupabaseUser
 
 # --- Gemini API Configuration ---
 try:
@@ -51,9 +54,13 @@ async def parse_query_with_llm(query: str) -> ParsedFilters:
     # model = genai.GenerativeModel('gemini-pro') # Standard model
     model = genai.GenerativeModel('gemini-1.5-flash') # Faster model
 
+    # Get current date
+    current_date_str = date.today().isoformat()
+
     # Define the prompt for Gemini
     # Instruct it to extract specific fields and return JSON
     prompt = f"""
+    The current date is {current_date_str}.
     Parse the following user query about finding running races and extract relevant filters.
     Return the filters as a JSON object with the following keys (use null if not mentioned):
     - "city": string (e.g., "Austin")
@@ -166,7 +173,8 @@ async def query_supabase_with_filters(filters: ParsedFilters, supabase: Client) 
 @router.post("/ai", response_model=List[Race], tags=["Race Query"])
 async def ai_search_races(
     request: QueryRequest,
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase_client),
+    current_user: SupabaseUser = Depends(get_current_user)
 ):
     """Receives a natural language query, parses it using the Gemini API,
     queries the database, and returns matching races.

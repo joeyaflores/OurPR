@@ -26,24 +26,19 @@ export default function LoginPage() {
   // Effect to handle redirection after successful OAuth login
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth state changed:', event, session); // Log auth state changes
-      if (event === 'SIGNED_IN' && session) {
-        // console.log('Detected SIGNED_IN event, redirecting to /');
-        // router.push('/'); // Redirect to home
-        console.log('Detected SIGNED_IN event, redirecting to /discover');
-        router.push('/discover'); // Redirect to discover page
-      }
-      // Optional: Handle SIGNED_OUT or other events if needed
-      // else if (event === 'SIGNED_OUT') {
-      //   // Maybe clear some state or show a message
+      console.log('Auth state changed (login page):', event);
+      // if (event === 'SIGNED_IN' && session) {
+      //   console.log('Detected SIGNED_IN event, redirecting to /discover');
+      //   router.push('/discover'); 
       // }
+      // If you need to handle other events like SIGNED_OUT specifically on the login page, do it here.
     });
 
     // Cleanup subscription on unmount
     return () => {
       subscription.unsubscribe();
     };
-  }, [supabase, router]); // Dependencies: supabase client and router
+  }, [supabase]); 
 
   const handleSignIn = async () => {
     // console.log("handleSignIn function called"); 
@@ -62,10 +57,8 @@ export default function LoginPage() {
       setError(error.message);
       setIsLoading(false); // Stop loading on error
     } else {
-      // No need to setIsLoading(false) here as router.push will navigate away
-      // The useEffect listener will handle the redirect after session is confirmed
-      // router.push('/'); // Let the listener handle redirection
-      console.log('Password sign-in successful, waiting for auth state change...');
+      console.log('Password sign-in successful, redirecting to /onboarding...');
+      router.push('/onboarding'); 
     }
     // Ensure isLoading is always reset if not navigating away (e.g., on error)
     // setIsLoading(false); // Moved inside the error block
