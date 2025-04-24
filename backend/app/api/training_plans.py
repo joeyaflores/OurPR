@@ -128,35 +128,38 @@ async def generate_training_plan(
 
     # --- Construct the Prompt --- 
     prompt = f"""
-    Generate a basic weekly training plan outline for a runner preparing for the '{race.name}'.
+    Act as an experienced running coach generating a basic weekly training plan outline for a runner preparing for the '{race.name}'.
+
     Race Details:
     - Distance: {race.distance or 'Unknown'}
     - Weeks Until Race: {weeks_until}
     Runner's Personal Record (PR) for {race.distance or 'this distance'}: {user_pr_str}
 
     Instructions:
-    - Provide a week-by-week summary focusing on key workouts (like long runs, tempo, intervals if appropriate) and overall goals for each week.
-    - Also include an estimated total weekly mileage range (e.g., "20-25 miles" or "35-40 km") for each week.
-    - Start from Week 1 and go up to Week {weeks_until}.
-    - Keep summaries concise.
-    - Ensure long runs build gradually over the weeks.
+    - Provide a week-by-week summary including:
+        - The primary focus for the week (e.g., base building, intensity, peak, taper).
+        - Key workout types appropriate for the distance (e.g., Long Run, Easy Run(s), Tempo Run, Interval/Speed Work). Mention target distances or durations for key runs like the long run.
+        - An estimated total weekly mileage range in MILES (e.g., "25-30 miles").
+    - Start from Week 1 and go up to Week {weeks_until}. Keep summaries concise.
+    - Ensure long runs build gradually week-over-week, typically increasing by no more than 10-15%.
     - The peak long run usually occurs 2-3 weeks before the race. For Half Marathons, this peak is typically 10-12 miles. For Marathons, it's typically 18-20 miles. Training long runs should generally not exceed the actual race distance for sub-ultra distances.
-    - Include a taper period in the final week(s) appropriate for the distance (e.g., 1-2 weeks for Half Marathon, 2-3 weeks for Marathon), reducing mileage significantly.
-    - Consider the runner's PR mainly as an indicator of general fitness level to tailor the aggressiveness of the plan structure, but focus on providing a sound, typical structure.
-    - Structure the output as a JSON object matching the following Pydantic model:
-    
+    - Include a taper period in the final 1-3 weeks (depending on distance) with significantly reduced mileage and intensity. Specify the taper length.
+    - If the runner's PR is '{user_pr_str}' (meaning 'Not available' or 'Error fetching'), assume an intermediate fitness level and provide a balanced, moderate plan structure. Otherwise, use the provided PR as a general indicator of fitness to tailor the progression slightly, but prioritize a sound structure over precise pace prescriptions.
+    - Include 1-2 designated rest days per week. Optionally suggest 1 day for cross-training or strength work.
+    - Structure the output strictly as a JSON object matching the following Pydantic model:
+
     ```json
     {{
       "race_name": "{race.name}",
       "race_distance": "{race.distance or 'Unknown'}",
       "total_weeks": {weeks_until},
       "weeks": [
-        {{"week_number": 1, "summary": "Description of week 1...", "estimated_weekly_mileage": "15-20 miles"}},
-        {{"week_number": 2, "summary": "Description of week 2...", "estimated_weekly_mileage": "18-23 miles"}},
+        {{"week_number": 1, "summary": "Focus: Base building. Key Workouts: Long Run (e.g., 6 miles), Easy Runs (3x). Rest days: 2.", "estimated_weekly_mileage": "15-20 miles"}},
+        {{"week_number": 2, "summary": "Focus: Introduce intensity. Key Workouts: Long Run (e.g., 7 miles), Tempo Run (e.g., 3 miles @ tempo), Easy Runs (2x). Rest days: 2. Optional: 1x Cross-Training.", "estimated_weekly_mileage": "18-23 miles"}},
         ...
-        {{"week_number": {weeks_until}, "summary": "Description of final week (taper)...", "estimated_weekly_mileage": "10-15 miles"}}
+        {{"week_number": {weeks_until}, "summary": "Focus: Taper Week {{ {weeks_until} - {weeks_until-1} }}. Key Workouts: Very short easy runs. Rest focus. Final race prep.", "estimated_weekly_mileage": "8-12 miles"}}
       ],
-      "notes": ["Optional notes like 'Adjust based on feel', 'Remember to warm up', 'Consult a coach for personalized advice.'"]
+      "notes": ["Optional notes like 'Adjust paces based on feel', 'Always warm up before workouts and cool down after.', 'Listen to your body and take extra rest if needed.', 'This is a general outline; consult a coach for personalization.'"]
     }}
     ```
 
