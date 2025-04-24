@@ -31,7 +31,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import type { UserPr } from "@/types/user_pr";
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 // Define standard distances for the dropdown
 // TODO: Potentially fetch this or share with DiscoverPage
@@ -88,7 +88,7 @@ export function AddEditPrForm({
 }: AddEditPrFormProps) {
 
   const isEditMode = !!prToEdit;
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const dateTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Form setup with react-hook-form and zod
   const form = useForm<AddEditPrFormValues>({
@@ -171,9 +171,10 @@ export function AddEditPrForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Date *</FormLabel>
-              <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+              <Popover>
                 <PopoverTrigger asChild>
                   <Button
+                    ref={dateTriggerRef}
                     variant={"outline"}
                     className={cn(
                       "w-full mt-1 pl-3 text-left font-normal",
@@ -191,14 +192,16 @@ export function AddEditPrForm({
                 <PopoverContent
                   className="w-auto p-0"
                   align="start"
+                  onInteractOutside={(event) => {
+                    if (dateTriggerRef.current?.contains(event.target as Node)) {
+                      event.preventDefault();
+                    }
+                  }}
                 >
                   <Calendar
                     mode="single"
                     selected={field.value}
-                    onSelect={(date) => {
-                      field.onChange(date);
-                      setIsCalendarOpen(false);
-                    }}
+                    onSelect={field.onChange}
                     disabled={(date) =>
                       date > new Date() || date < new Date("1900-01-01")
                     }
