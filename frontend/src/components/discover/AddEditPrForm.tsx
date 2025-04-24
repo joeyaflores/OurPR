@@ -88,6 +88,7 @@ export function AddEditPrForm({
 }: AddEditPrFormProps) {
 
   const isEditMode = !!prToEdit;
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
   // Form setup with react-hook-form and zod
   const form = useForm<AddEditPrFormValues>({
@@ -170,7 +171,7 @@ export function AddEditPrForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Date *</FormLabel>
-              <Popover>
+              <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant={"outline"}
@@ -190,15 +191,14 @@ export function AddEditPrForm({
                 <PopoverContent
                   className="w-auto p-0"
                   align="start"
-                  onInteractOutside={(e) => {
-                    // Prevent closing immediately on mobile/modal scenarios
-                    e.preventDefault();
-                  }}
                 >
                   <Calendar
                     mode="single"
                     selected={field.value}
-                    onSelect={field.onChange}
+                    onSelect={(date) => {
+                      field.onChange(date);
+                      setIsCalendarOpen(false);
+                    }}
                     disabled={(date) =>
                       date > new Date() || date < new Date("1900-01-01")
                     }
