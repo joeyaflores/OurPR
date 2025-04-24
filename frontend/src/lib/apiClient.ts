@@ -1,7 +1,7 @@
 import { createClient } from './supabase/client'; // Use the browser client
 
 // --- Base URL for the Backend API ---
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api'; // Default to localhost:8000 if not set
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'; // Default to localhost:8000 if not set
 
 // --- Type Definitions (Align with Backend Pydantic Models) ---
 // TODO: Consider sharing types between backend and frontend (e.g., via a shared package)
