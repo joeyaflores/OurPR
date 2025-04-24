@@ -14,9 +14,10 @@ export async function GET(request: NextRequest) {
     const supabase = createClient(cookieStore);
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      // Successful login, redirect to the discover page instead of origin/next
-      console.log("Auth successful, redirecting to /discover");
-      return NextResponse.redirect(`${origin}/discover`); 
+      // Successful login, redirect to the onboarding page 
+      // The onboarding page will handle redirecting to /discover if already onboarded
+      console.log("Auth successful, redirecting to /onboarding");
+      return NextResponse.redirect(`${origin}/onboarding`); 
     } else {
        console.error("Error exchanging code for session:", error.message);
     }

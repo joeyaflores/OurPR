@@ -3,13 +3,13 @@ from fastapi.security import OAuth2PasswordBearer
 from supabase import Client, AuthApiError
 from gotrue.types import User as SupabaseUser
 
-from ..services.supabase_client import get_supabase_client
+from ..services.supabase_client import get_base_supabase_client
 
 # Although we use Bearer tokens, OAuth2PasswordBearer helps extract the token
 # It expects the token to be passed in the Authorization header as "Bearer <token>"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-def get_current_user(request: Request, supabase: Client = Depends(get_supabase_client)) -> SupabaseUser:
+def get_current_user(request: Request, supabase: Client = Depends(get_base_supabase_client)) -> SupabaseUser:
     """Dependency function to get the current user from Supabase JWT.
 
     Reads the Authorization header, validates the JWT using Supabase,

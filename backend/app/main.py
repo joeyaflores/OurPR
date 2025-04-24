@@ -5,6 +5,8 @@ from dotenv import load_dotenv # <-- Add import load_dotenv
 
 # Import API routers
 from .api import races, user_prs, race_query, user_plans # Add user_plans
+from .api import user_goal
+from .api import recommendations
 
 load_dotenv() # <-- Load environment variables from .env file
 
@@ -49,5 +51,7 @@ app.include_router(races.router, prefix="/api", tags=["Races"])
 app.include_router(user_prs.router, prefix="/api", tags=["User PRs"])
 app.include_router(race_query.router, prefix="/api/race-query", tags=["Race Query"])
 app.include_router(user_plans.router, prefix="/api", tags=["User Plan"]) # Add user_plans router (includes /users/me/plan)
+app.include_router(user_goal.router, prefix="/api") # Prefix is already in the router file
+app.include_router(recommendations.router, prefix="/api") # Prefix is already in the router file
 
 # Add other routers here later (e.g., auth) 
