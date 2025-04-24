@@ -4,10 +4,13 @@ from gotrue.types import User as SupabaseUser
 from postgrest import APIError as PostgrestAPIError
 import uuid
 from typing import List # Import List for response model
+from datetime import date
+from pydantic import ValidationError
 
 from ..services.supabase_client import get_supabase_client
-from ..models.user_race_plan import UserRacePlan, UserRacePlanCreate # Import models
+from ..models.user_race_plan import UserRacePlan, UserRacePlanCreate, PlannedRaceDetail # <-- Import new model
 from ..models.race import Race # <-- Import the Race model
+from ..models.user_pr import UserPr # Import PR model
 from .auth import get_current_user # Import auth dependency
 
 router = APIRouter(
@@ -17,38 +20,79 @@ router = APIRouter(
 
 @router.get(
     "/",
-    response_model=List[Race], # <-- Change response model to List[Race]
-    summary="Get full race details for races in the authenticated user's plan"
+    response_model=List[PlannedRaceDetail], # <-- Use the new response model
+    summary="Get full race details and plan status for races in the authenticated user's plan"
 )
 async def get_user_plan(
     *, # Keyword-only args below
     supabase: Client = Depends(get_supabase_client),
     current_user: SupabaseUser = Depends(get_current_user)
 ):
-    """Retrieves full race details for races currently in the authenticated user's plan."""
+    """Retrieves full race details, plus generated plan status, for races in the user's plan."""
     if not current_user or not current_user.id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
     user_id = current_user.id
 
     try:
-        # Select all fields from the related 'races' table
-        # Assumes 'race_id' in 'user_race_plans' is a foreign key to 'races.id'
-        response = supabase.table("user_race_plans")\
-                           .select("races(*)")\
+        # 1. Get the user's planned races with race details
+        plan_response = supabase.table("user_race_plans")\
+                           .select("id, race_id, races(*)")\
                            .eq("user_id", str(user_id))\
                            .execute()
 
-        if not hasattr(response, 'data') or not isinstance(response.data, list):
-            print(f"Unexpected response getting plan for user {user_id}: {response}")
-            raise HTTPException(status_code=500, detail="Unexpected response format from database")
+        if not hasattr(plan_response, 'data') or not isinstance(plan_response.data, list):
+            print(f"Unexpected response getting plan for user {user_id}: {plan_response}")
+            raise HTTPException(status_code=500, detail="Unexpected response format fetching plans")
 
-        # Extract the 'races' dictionary from each item in the list
-        # Handle cases where 'races' might be null if the FK relationship or data is broken
-        planned_races = [item['races'] for item in response.data if item.get('races')]
+        user_planned_races = plan_response.data
+        # print(f"[get_user_plan] User {user_id} - Fetched planned races: {user_planned_races}") # <-- Log fetched plans
+        if not user_planned_races:
+            return [] # No races planned
+
+        # 2. Get the IDs of races for which a plan HAS been generated for this user
+        planned_race_ids = [item['race_id'] for item in user_planned_races if item.get('race_id')]
+        saved_plan_race_ids = set()
+        if planned_race_ids: # Only query if there are races to check
+            saved_plan_response = supabase.table("user_generated_plans")\
+                                        .select("race_id")\
+                                        .eq("user_id", str(user_id))\
+                                        .in_("race_id", planned_race_ids)\
+                                        .execute()
+
+            if hasattr(saved_plan_response, 'data') and isinstance(saved_plan_response.data, list):
+                saved_plan_race_ids = {item['race_id'] for item in saved_plan_response.data}
+            else:
+                 print(f"Warning: Unexpected response fetching saved plan IDs for user {user_id}: {saved_plan_response}")
+
+        # 3. Combine the data
+        results: List[PlannedRaceDetail] = []
+        for item in user_planned_races:
+            if not item.get('races'): # Skip if race data is missing (shouldn't happen with inner join default)
+                continue
+                
+            race_data = item['races']
+            race_id = item.get('race_id')
+            has_plan = race_id in saved_plan_race_ids
+            
+            combined_data = {
+                **race_data,
+                "user_race_plan_id": item['id'], # Use the actual user_race_plan ID
+                "has_generated_plan": has_plan
+            }
+            
+            try:
+                planned_race = PlannedRaceDetail(**combined_data)
+                results.append(planned_race)
+            except ValidationError as e:
+                print(f"Validation Error combining plan data: {e}, data: {combined_data}")
+                continue
         
-        # Pydantic will validate that the dictionaries match the Race model structure
-        return planned_races
+        # Sort results by date
+        results.sort(key=lambda r: date.fromisoformat(r.date) if r.date else date.max)
+
+        # print(f"[get_user_plan] User {user_id} - Final combined results: {results}") # <-- Log final results
+        return results
 
     except PostgrestAPIError as e:
         # Handle potential PostgREST errors (e.g., permissions, invalid query)

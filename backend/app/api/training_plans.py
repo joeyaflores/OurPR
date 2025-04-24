@@ -3,11 +3,12 @@ import uuid
 import json
 import google.generativeai as genai
 from datetime import date, timedelta
+import re # <-- Import regex module
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from supabase import Client
 from gotrue.types import User as SupabaseUser
-from pydantic import ValidationError
+from pydantic import ValidationError, BaseModel
 
 from ..services.supabase_client import get_supabase_client
 from ..models.training_plan import TrainingPlanOutline, WeeklySummary # Import plan models
@@ -166,31 +167,46 @@ async def generate_training_plan(
     JSON Output:
     """
 
-    print(f"\n--- Sending Prompt to Gemini for {race.name} ---")
+    # print(f"\n--- Sending Prompt to Gemini for {race.name} ---")
     # print(prompt) # Uncomment to debug the full prompt
-    print("---------------------------------------------")
+    # print("---------------------------------------------")
 
     try:
         model = genai.GenerativeModel('gemini-1.5-flash') 
         response = await model.generate_content_async(prompt)
         
-        print(f"Gemini raw response text: {response.text[:500]}...") # Log beginning of response
+        # print(f"Gemini raw response text: {response.text[:500]}...") # Log beginning of response
 
-        # Basic cleanup of the response text
-        json_text = response.text.strip().strip('```json').strip('```').strip()
+        # --- More Robust JSON Extraction ---
+        raw_text = response.text
+        json_match = re.search(r"```json\n({.*?})\n```", raw_text, re.DOTALL | re.MULTILINE)
         
+        if json_match:
+            json_text = json_match.group(1).strip() # Extract content within ```json ... ```
+            # print("Extracted JSON block using regex.")
+        else:
+            # Fallback: Try stripping fences and hope it's just the JSON
+            print("Warning: Could not find ```json block, attempting basic strip.")
+            json_text = raw_text.strip().strip('```json').strip('```').strip()
+            # Check if it looks like JSON before attempting parse
+            if not json_text.startswith('{') or not json_text.endswith('}'):
+                 print(f"Error: Stripped text doesn't look like JSON: {json_text[:100]}...")
+                 raise json.JSONDecodeError("Failed to extract valid JSON block from AI response.", raw_text, 0)
+        # ------------------------------------
+
         # Parse the JSON string into a Python dict
         parsed_json = json.loads(json_text)
         
         # Validate the dict against the Pydantic model
         plan_outline = TrainingPlanOutline.parse_obj(parsed_json)
-        print(f"Successfully parsed training plan from Gemini for {race.name}")
+        # print(f"Successfully parsed training plan from Gemini for {race.name}")
         return plan_outline
 
     except json.JSONDecodeError as e:
         print(f"Error decoding JSON response from Gemini: {e}")
-        print(f"Faulty JSON text attempt: {json_text}")
-        raise HTTPException(status_code=500, detail="AI service returned invalid format.")
+        # Log the text that failed parsing
+        print(f"Faulty JSON text attempt: {json_text if 'json_text' in locals() else '[Could not extract]'}") 
+        raise HTTPException(status_code=500, detail=f"AI service returned invalid format. {e.msg}")
     except ValidationError as e:
         print(f"Error validating generated plan against Pydantic model: {e}")
         print(f"Parsed JSON attempt: {parsed_json}")
@@ -200,4 +216,98 @@ async def generate_training_plan(
         # Attempt to capture more specific Gemini errors if possible
         error_detail = f"Error generating plan with AI service: {e}"
         if hasattr(e, 'message'): error_detail = e.message # Use specific message if available
-        raise HTTPException(status_code=500, detail=error_detail) 
+        raise HTTPException(status_code=500, detail=error_detail)
+
+# Simple response model for save endpoint (Define BEFORE use)
+class UserGeneratedPlanResponse(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    race_id: uuid.UUID
+
+@router.post(
+    "/races/{race_id}/generated-plan",
+    status_code=status.HTTP_201_CREATED,
+    summary="Save a Generated Training Plan Outline",
+    response_model=UserGeneratedPlanResponse # Now defined
+)
+async def save_generated_plan(
+    race_id: uuid.UUID,
+    plan_outline: TrainingPlanOutline, # Plan is the request body
+    supabase: Client = Depends(get_supabase_client),
+    current_user: SupabaseUser = Depends(get_current_user)
+):
+    """Saves a generated training plan outline for the user and specified race."""
+    user_id = current_user.id
+
+    # Convert Pydantic model to dict for Supabase
+    # Use .model_dump() for Pydantic v2+, .dict() for v1
+    plan_json = plan_outline.model_dump(mode='json')
+
+    insert_data = {
+        "user_id": str(user_id),
+        "race_id": str(race_id),
+        "generated_plan": plan_json # Store the whole plan object
+    }
+
+    try:
+        # Use upsert to handle potential conflicts (if user saves again)
+        # conflict_target specifies the unique constraint to check
+        response = supabase.table("user_generated_plans")\
+            .upsert(insert_data, on_conflict="user_id, race_id")\
+            .execute()
+
+        if not response.data:
+            # Log details if possible
+            print(f"Upsert failed for user {user_id}, race {race_id}. Response: {response}")
+            raise HTTPException(status_code=500, detail="Failed to save training plan.")
+
+        # Return the saved data (or just a success message/ID)
+        # Let's create a simple response model
+        saved_data = response.data[0]
+        return UserGeneratedPlanResponse(id=saved_data['id'], user_id=saved_data['user_id'], race_id=saved_data['race_id']) 
+
+    except Exception as e:
+        print(f"Error saving generated plan for user {user_id}, race {race_id}: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while saving the plan.")
+
+
+@router.get(
+    "/races/{race_id}/generated-plan",
+    response_model=TrainingPlanOutline, # Return the full plan outline
+    summary="Get Saved Training Plan Outline",
+    responses={404: {"detail": "No saved plan found for this race."}}
+)
+async def get_saved_plan(
+    race_id: uuid.UUID,
+    supabase: Client = Depends(get_supabase_client),
+    current_user: SupabaseUser = Depends(get_current_user)
+):
+    """Retrieves a previously saved generated training plan outline for the user and specified race."""
+    user_id = current_user.id
+
+    try:
+        response = supabase.table("user_generated_plans")\
+            .select("generated_plan")\
+            .eq("user_id", str(user_id))\
+            .eq("race_id", str(race_id))\
+            .maybe_single()\
+            .execute()
+        
+        if not response.data or not response.data.get("generated_plan"):
+            raise HTTPException(status_code=404, detail="No saved plan found for this race.")
+            
+        # The data is already JSONB, Pydantic should parse it directly
+        # Assuming generated_plan column directly holds the TrainingPlanOutline structure
+        plan_data = response.data["generated_plan"]
+        
+        # Validate against the model before returning
+        return TrainingPlanOutline.parse_obj(plan_data)
+
+    except HTTPException as e: # Re-raise 404
+        raise e
+    except ValidationError as e:
+        print(f"Error validating saved plan data for user {user_id}, race {race_id}: {e}")
+        raise HTTPException(status_code=500, detail="Saved plan data is invalid.")
+    except Exception as e:
+        print(f"Error fetching saved plan for user {user_id}, race {race_id}: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while fetching the saved plan.") 

@@ -35,6 +35,11 @@ export interface Race {
   view_count?: number; // <<< Add based on model
   save_count?: number; // <<< Add based on model
   plan_count?: number; // <<< Add based on model
+  updated_at?: string;
+  image_url?: string | null; // Add this line for the race image
+
+  // Fields added for plan persistence
+  has_generated_plan?: boolean;
   // Add other fields returned by the backend Race model as needed
 }
 
