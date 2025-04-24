@@ -20,6 +20,9 @@ export function SiteHeader() {
             <Link href="/discover" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
               Discover Races
             </Link>
+            <Link href="/plan" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
+              My Plan
+            </Link>
             {/* <Link href="/groups" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
               Training Groups
             </Link>

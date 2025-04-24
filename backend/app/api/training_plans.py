@@ -1,0 +1,203 @@
+import os
+import uuid
+import json
+import google.generativeai as genai
+from datetime import date, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from supabase import Client
+from gotrue.types import User as SupabaseUser
+from pydantic import ValidationError
+
+from ..services.supabase_client import get_supabase_client
+from ..models.training_plan import TrainingPlanOutline, WeeklySummary # Import plan models
+from ..models.race import Race # Import race model
+from ..models.user_pr import UserPr # Import PR model
+from .auth import get_current_user # Import auth dependency
+
+# --- Gemini API Configuration (Copied from race_query.py - Consider refactoring to a service) ---
+try:
+    gemini_api_key = os.environ.get("GEMINI_API_KEY")
+    if not gemini_api_key:
+        print("Warning: GEMINI_API_KEY not found. Training plan generation will fail.")
+    else:
+        genai.configure(api_key=gemini_api_key)
+except Exception as e:
+    print(f"Error configuring Gemini API: {e}")
+    gemini_api_key = None # Ensure it's None if configuration fails
+# ----------------------------------------------------------------------------
+
+router = APIRouter(
+    prefix="/users/me",
+    tags=["Training Plans"],
+    dependencies=[Depends(get_current_user)] # Apply auth to all routes in this router
+)
+
+# Helper function to format time (could be moved to utils)
+def format_time_from_seconds(total_seconds: int) -> str:
+    if total_seconds < 0:
+        return "N/A"
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    if hours > 0:
+        return f"{hours:01}:{minutes:02}:{seconds:02}"
+    else:
+        return f"{minutes:01}:{seconds:02}"
+
+
+@router.post(
+    "/generate-plan/{race_id}", 
+    response_model=TrainingPlanOutline,
+    summary="Generate a Basic Training Plan Outline"
+)
+async def generate_training_plan(
+    race_id: uuid.UUID,
+    supabase: Client = Depends(get_supabase_client),
+    current_user: SupabaseUser = Depends(get_current_user) 
+):
+    """Generates a basic weekly training plan outline using AI based on a 
+    planned race and the user's relevant PR.
+    """
+    user_id = current_user.id
+
+    # 1. Fetch Race Details
+    try:
+        race_response = supabase.table("races").select("*").eq("id", str(race_id)).maybe_single().execute()
+        if not race_response.data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Race with ID {race_id} not found.")
+        race = Race(**race_response.data)
+        print(f"Fetched race details for {race.name}")
+    except Exception as e:
+        print(f"Error fetching race {race_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not fetch race details.")
+
+    # 2. Fetch User's Relevant PR
+    user_pr_str = "Not available"
+    try:
+        if race.distance:
+            pr_response = supabase.table("user_prs")\
+                .select("*")\
+                .eq("user_id", str(user_id))\
+                .eq("distance", race.distance)\
+                .order("time_in_seconds", desc=False)\
+                .limit(1)\
+                .maybe_single()\
+                .execute()
+            
+            if pr_response.data:
+                user_pr = UserPr(**pr_response.data)
+                user_pr_str = format_time_from_seconds(user_pr.time_in_seconds)
+                print(f"Fetched relevant PR for {race.distance}: {user_pr_str}")
+            else:
+                 print(f"No PR found for user {user_id} at distance {race.distance}")
+        else:
+            print(f"Race {race.name} has no distance specified, cannot fetch relevant PR.")
+
+    except Exception as e:
+        # Non-critical error, proceed without PR info if it fails
+        print(f"Error fetching PR for user {user_id}, distance {race.distance}: {e}")
+        user_pr_str = "Error fetching"
+
+    # 3. Calculate Weeks Until Race
+    try:
+        if not race.date:
+             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Race date is not set, cannot generate plan.")
+        
+        # Assume race.date is already a string in 'YYYY-MM-DD' format from the model
+        race_date = date.fromisoformat(race.date)
+        today = date.today()
+        
+        if race_date <= today:
+             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Race date is in the past, cannot generate plan.")
+             
+        weeks_until = (race_date - today).days // 7
+        if weeks_until < 1: # Need at least 1 full week
+             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Race is less than a week away, cannot generate plan.")
+        print(f"Weeks until {race.name}: {weeks_until}")
+        
+    except ValueError:
+         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid race date format.")
+    except Exception as e:
+        print(f"Error calculating weeks until race: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not determine time until race.")
+
+    # 4. Prepare and Call AI Model (Placeholder Logic)
+    if not gemini_api_key:
+        raise HTTPException(status_code=503, detail="AI service is not configured.")
+
+    # --- Construct the Prompt --- 
+    prompt = f"""
+    Act as an experienced running coach generating a basic weekly training plan outline for a runner preparing for the '{race.name}'.
+
+    Race Details:
+    - Distance: {race.distance or 'Unknown'}
+    - Weeks Until Race: {weeks_until}
+    Runner's Personal Record (PR) for {race.distance or 'this distance'}: {user_pr_str}
+
+    Instructions:
+    - Provide a week-by-week summary including:
+        - The primary focus for the week (e.g., base building, intensity, peak, taper).
+        - Key workout types appropriate for the distance (e.g., Long Run, Easy Run(s), Tempo Run, Interval/Speed Work). Mention target distances or durations for key runs and include a brief description of the intended effort level (e.g., 'Tempo Run (comfortably hard pace)', 'Easy Run (conversational pace)', 'Intervals (hard effort)').
+        - An estimated total weekly mileage range in MILES (e.g., "25-30 miles").
+    - Start from Week 1 and go up to Week {weeks_until}. Keep summaries concise.
+    - Ensure long runs build gradually week-over-week, typically increasing by no more than 10-15%.
+    - The peak long run usually occurs 2-3 weeks before the race. For Half Marathons, this peak is typically 10-12 miles. For Marathons, it's typically 18-20 miles. Training long runs should generally not exceed the actual race distance for sub-ultra distances.
+    - Include a taper period in the final 1-3 weeks (depending on distance) with significantly reduced mileage and intensity. Specify the taper length.
+    - If the runner's PR is '{user_pr_str}' (meaning 'Not available' or 'Error fetching'), assume an intermediate fitness level and provide a balanced, moderate plan structure. Otherwise, use the provided PR as a general indicator of fitness to tailor the progression slightly, but prioritize a sound structure over precise pace prescriptions.
+    - Include 1-2 designated rest days per week. Optionally suggest 1 day for cross-training or strength work.
+    - Structure the output strictly as a JSON object matching the following Pydantic model:
+
+    ```json
+    {{
+      "race_name": "{race.name}",
+      "race_distance": "{race.distance or 'Unknown'}",
+      "total_weeks": {weeks_until},
+      "weeks": [
+        {{"week_number": 1, "summary": "Focus: Base building. Key Workouts: Long Run (e.g., 6 miles at easy pace), Easy Runs (3x at conversational pace). Rest days: 2.", "estimated_weekly_mileage": "15-20 miles"}},
+        {{"week_number": 2, "summary": "Focus: Introduce intensity. Key Workouts: Long Run (e.g., 7 miles easy), Tempo Run (e.g., 3 miles @ comfortably hard pace), Easy Runs (2x conversational). Rest days: 2. Optional: 1x Cross-Training.", "estimated_weekly_mileage": "18-23 miles"}},
+        ...
+        {{"week_number": {weeks_until}, "summary": "Focus: Taper Week {{ {weeks_until} - {weeks_until-1} }}. Key Workouts: Very short easy runs (conversational pace). Rest focus. Final race prep.", "estimated_weekly_mileage": "8-12 miles"}}
+      ],
+      "notes": ["Optional notes like 'Adjust paces based on feel', 'Always warm up before workouts and cool down after.', 'Listen to your body and take extra rest if needed.', 'This is a general outline; consult a coach for personalization.'"]
+    }}
+    ```
+
+    JSON Output:
+    """
+
+    print(f"\n--- Sending Prompt to Gemini for {race.name} ---")
+    # print(prompt) # Uncomment to debug the full prompt
+    print("---------------------------------------------")
+
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash') 
+        response = await model.generate_content_async(prompt)
+        
+        print(f"Gemini raw response text: {response.text[:500]}...") # Log beginning of response
+
+        # Basic cleanup of the response text
+        json_text = response.text.strip().strip('```json').strip('```').strip()
+        
+        # Parse the JSON string into a Python dict
+        parsed_json = json.loads(json_text)
+        
+        # Validate the dict against the Pydantic model
+        plan_outline = TrainingPlanOutline.parse_obj(parsed_json)
+        print(f"Successfully parsed training plan from Gemini for {race.name}")
+        return plan_outline
+
+    except json.JSONDecodeError as e:
+        print(f"Error decoding JSON response from Gemini: {e}")
+        print(f"Faulty JSON text attempt: {json_text}")
+        raise HTTPException(status_code=500, detail="AI service returned invalid format.")
+    except ValidationError as e:
+        print(f"Error validating generated plan against Pydantic model: {e}")
+        print(f"Parsed JSON attempt: {parsed_json}")
+        raise HTTPException(status_code=500, detail="AI service generated incompatible plan structure.")
+    except Exception as e:
+        print(f"Error calling Gemini API for plan generation: {e}")
+        # Attempt to capture more specific Gemini errors if possible
+        error_detail = f"Error generating plan with AI service: {e}"
+        if hasattr(e, 'message'): error_detail = e.message # Use specific message if available
+        raise HTTPException(status_code=500, detail=error_detail) 

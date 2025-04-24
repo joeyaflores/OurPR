@@ -5,22 +5,41 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { Race } from '@/lib/apiClient'; // Import the Race type
-import { ExternalLink, CalendarDays, Thermometer, BarChart, Mountain, PlusCircle, CheckCircle, AlertCircle, Trash2 } from 'lucide-react'; // Icons
+import { ExternalLink, CalendarDays, Thermometer, BarChart, Mountain, PlusCircle, CheckCircle, AlertCircle, Trash2, Trophy, Clock, Flag, Rocket } from 'lucide-react'; // Icons
 import { createClient } from '@/lib/supabase/client'; // Import Supabase client
 import type { User } from '@supabase/supabase-js';
 import { toast } from "sonner"; // Import toast
+import { Progress } from "@/components/ui/progress"; // Import Progress
 
 // Action States for the button
 type ActionState = 'idle' | 'loading' | 'success' | 'error';
 
 interface RaceCardProps {
   race: Race;
+  viewMode?: 'discover' | 'plan'; // Add viewMode prop
+  onRaceRemoved?: (raceId: string | number) => void; // Callback for successful removal
+  userPr?: string | null; // Add optional prop for user's PR time string
+  timeUntilRace?: string; // Add optional prop for time until race string
+  trainingSuggestion?: string | null; // Add optional prop for training suggestion
+  onGeneratePlanRequest?: (raceId: string | number) => void; // Callback to request plan generation - Make optional for discover view
+  isGeneratingPlan?: boolean; // Prop indicating if plan generation is in progress for this card - Make optional
+  progressPercent?: number | null; // <-- Add progress prop
 }
 
 // Add API Base URL (consider moving to a config file)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
-export function RaceCard({ race }: RaceCardProps) {
+export function RaceCard({ 
+    race, 
+    viewMode = 'discover', 
+    onRaceRemoved, 
+    userPr, 
+    timeUntilRace,
+    trainingSuggestion,
+    onGeneratePlanRequest, // Destructure new prop
+    isGeneratingPlan,
+    progressPercent // <-- Destructure progress prop
+}: RaceCardProps) { 
     const supabase = createClient();
     const [user, setUser] = useState<User | null>(null);
     // State to track individual button states { [raceId]: ActionState }
@@ -55,10 +74,21 @@ export function RaceCard({ race }: RaceCardProps) {
                 const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${accessToken}` },
                 });
-                if (!response.ok) throw new Error('Failed to fetch plan');
-                const data: string[] = await response.json(); 
-                setPlannedRaceIds(new Set(data));
-                console.log(`RaceCard (${race.id}): Fetched planned race IDs:`, data);
+                if (!response.ok) {
+                     // If backend returns 404 (no plan yet), treat as empty, not error
+                    if (response.status === 404) {
+                        setPlannedRaceIds(new Set());
+                        console.log(`RaceCard (${race.id}): No initial plan found (404).`);
+                    } else {
+                        throw new Error(`Failed to fetch plan: ${response.status}`);
+                    }
+                } else {
+                    // Expect an array of Race objects now
+                    const data: Race[] = await response.json(); 
+                    // Extract the IDs to build the Set
+                    setPlannedRaceIds(new Set(data.map(r => r.id)));
+                    console.log(`RaceCard (${race.id}): Fetched planned race objects, extracted IDs:`, data.map(r=>r.id));
+                }
             } catch (e) {
                 console.error(`RaceCard (${race.id}): Failed to fetch initial plan state:`, e);
                 setPlannedRaceIds(new Set());
@@ -134,6 +164,12 @@ export function RaceCard({ race }: RaceCardProps) {
                 return newSet;
             }); // Update local state
             toast.success("Race removed from your plan!"); 
+
+            // Call the callback to notify the parent component
+            if (onRaceRemoved) {
+                onRaceRemoved(race.id);
+            }
+
             setTimeout(() => { setButtonState('idle'); }, 2000); 
         } catch (e: any) {
             console.error("Failed to remove race from plan:", e);
@@ -141,6 +177,16 @@ export function RaceCard({ race }: RaceCardProps) {
             toast.error("Error removing race", { description: e.message }); 
             setTimeout(() => { setButtonState('idle'); }, 3000);
         }
+    };
+
+    // Handler for the placeholder generate button
+    const handleGeneratePlanClick = (e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent card click if needed
+        // Call the parent handler, passing the race ID
+        if (onGeneratePlanRequest) { // Check if handler exists
+            onGeneratePlanRequest(race.id);
+        }
+        // Parent component (MyPlanPage) will manage loading state & modal display
     };
 
     const renderStat = (IconComponent: React.ElementType, label: string, value: React.ReactNode | undefined | null, unit: string = '') => {
@@ -171,28 +217,88 @@ export function RaceCard({ race }: RaceCardProps) {
     // Determine button state based on plan and loading
     const isInPlan = plannedRaceIds.has(race.id);
     const isButtonDisabled = !user || isPlanLoading || buttonState === 'loading' || buttonState === 'success';
-    const buttonAction = isInPlan ? handleRemoveRaceFromPlan : handleAddRaceToPlan;
-    const buttonText = isInPlan ? "Remove from Plan" : "Add to Plan";
-    const ButtonIcon = isInPlan ? Trash2 : PlusCircle;
+    
+    // Adjust button behavior based on viewMode
+    let displayButton = true;
+    let finalButtonAction = handleAddRaceToPlan;
+    let finalButtonText = "Add to Plan";
+    let FinalButtonIcon = PlusCircle;
+    let buttonVariant: "outline" | "destructive" = "outline";
+
+    if (viewMode === 'plan') {
+        // In plan view, always show remove functionality (if user is logged in)
+        finalButtonAction = handleRemoveRaceFromPlan;
+        finalButtonText = "Remove from Plan";
+        FinalButtonIcon = Trash2;
+        buttonVariant = 'destructive'; // Always destructive style for remove in plan view
+        displayButton = !!user; // Only show button if user is logged in
+    } else {
+        // Original 'discover' view logic
+        if (isInPlan) {
+            finalButtonAction = handleRemoveRaceFromPlan;
+            finalButtonText = "Remove from Plan";
+            FinalButtonIcon = Trash2;
+            buttonVariant = 'destructive';
+        } else {
+            finalButtonAction = handleAddRaceToPlan;
+            finalButtonText = "Add to Plan";
+            FinalButtonIcon = PlusCircle;
+            buttonVariant = 'outline';
+        }
+    }
 
   return (
     <Card key={race.id} className="overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 flex flex-col">
         <CardHeader className="pb-3">
             <CardTitle className="text-lg font-semibold">{race.name}</CardTitle>
-            <CardDescription className="flex items-center text-sm">
-                 <CalendarDays className="mr-1.5 h-4 w-4" />
-                 {race.date ? format(new Date(race.date), "PPP") : "Date TBD"}
-                 {race.distance ? <span className="ml-2 font-medium">({race.distance})</span> : ''}
+            <CardDescription className="flex items-center text-sm flex-wrap gap-x-2 gap-y-1">
+                 <span className="inline-flex items-center">
+                    <CalendarDays className="mr-1.5 h-4 w-4" />
+                    {race.date ? format(new Date(race.date), "PPP") : "Date TBD"}
+                 </span>
+                 {timeUntilRace && timeUntilRace !== "Date TBD" && (
+                    <span className="inline-flex items-center font-medium text-primary">
+                        <Clock className="mr-1 h-4 w-4" />
+                        {timeUntilRace}
+                    </span>
+                 )}
+                 {race.distance ? <span className="font-medium">({race.distance})</span> : ''}
             </CardDescription>
         </CardHeader>
+
+        {/* Optional Progress Bar - Shown below header */} 
+        {progressPercent !== null && viewMode === 'plan' && (
+            <div className="px-6 pb-3 pt-1"> {/* Add some padding */} 
+                 <Progress value={progressPercent} className="w-full h-2" /> 
+                 {/* You could add labels here too if desired */}
+             </div>
+         )}
+
         <CardContent className="text-sm space-y-2 pt-0 pb-4 flex-grow">
              {renderStat(BarChart, "Flatness", renderStars(race.flatness_score))}
              {renderStat(Mountain, "Elevation Gain", race.total_elevation_gain, " ft")}
              {renderStat(BarChart, "PR Potential", race.pr_potential_score != null ? `${race.pr_potential_score}/10` : "N/A")}
              {renderStat(Thermometer, "Avg Temp", race.average_temp_fahrenheit, "°F")}
             
-             {race.flatness_score == null && race.pr_potential_score == null && race.average_temp_fahrenheit == null && race.total_elevation_gain == null &&
-                <p className="text-muted-foreground italic">More details coming soon.</p>}
+             {/* Display User PR if provided */}
+             {userPr && (
+                 <div className="flex items-center text-sm text-blue-600 font-medium pt-1">
+                     <Trophy className="mr-1.5 h-4 w-4 flex-shrink-0" />
+                     <span>Your PR: {userPr}</span>
+                 </div>
+             )}
+
+             {/* Display Training Suggestion if provided */} 
+             {trainingSuggestion && (
+                <div className="flex items-center text-sm text-green-700 dark:text-green-400 font-medium pt-1">
+                     <Flag className="mr-1.5 h-4 w-4 flex-shrink-0" /> 
+                     <span>{trainingSuggestion}</span>
+                 </div>
+             )}
+
+             {/* Adjust empty state check */}
+             {race.flatness_score == null && race.pr_potential_score == null && race.average_temp_fahrenheit == null && race.total_elevation_gain == null && !userPr && !trainingSuggestion &&
+                  <p className="text-muted-foreground italic">More details coming soon.</p>}
 
              {race.website_url && (
                 <div className="pt-1">
@@ -208,34 +314,87 @@ export function RaceCard({ race }: RaceCardProps) {
              )}
         </CardContent>
         <CardFooter className="pt-0 pb-3 border-t pt-3">
-            <Button 
-                variant={buttonState === 'success' ? 'outline' : (isInPlan ? 'destructive' : 'outline')} 
-                size="sm" 
-                className="w-full"
-                disabled={isButtonDisabled}
-                onClick={(e) => { 
-                    e.stopPropagation(); // Prevent card click if needed
-                    buttonAction(); 
-                }}
-            >
-                {buttonState === 'loading' ? (
-                    <>
-                      Processing...
-                    </>
-                ) : buttonState === 'success' ? (
-                    <>
-                      <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> {isInPlan ? 'Added!' : 'Removed!'}
-                    </>
-                ) : buttonState === 'error' ? (
-                    <>
-                      <AlertCircle className="mr-2 h-4 w-4 text-destructive" /> Error
-                    </>
-                ) : (
-                    <>
-                      <ButtonIcon className="mr-2 h-4 w-4" /> {buttonText}
-                    </>
-                )}
-            </Button> 
+            {/* Discover Mode: Original Button */} 
+            {viewMode === 'discover' && displayButton && (
+                <Button 
+                    variant={buttonState === 'success' ? 'outline' : buttonVariant}
+                    size="sm" 
+                    className="w-full"
+                    disabled={isButtonDisabled}
+                    onClick={(e) => { 
+                        e.stopPropagation();
+                        finalButtonAction(); // Uses add/remove logic based on isInPlan
+                    }}
+                >
+                    {buttonState === 'loading' ? (
+                        <>
+                          Processing...
+                        </>
+                    ) : buttonState === 'success' ? (
+                        <>
+                          <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> 
+                          {finalButtonAction === handleAddRaceToPlan ? 'Added!' : 'Removed!'} 
+                        </>
+                    ) : buttonState === 'error' ? (
+                        <>
+                          <AlertCircle className="mr-2 h-4 w-4 text-destructive" /> Error
+                        </>
+                    ) : (
+                        <>
+                          <FinalButtonIcon className="mr-2 h-4 w-4" /> {finalButtonText}
+                        </>
+                    )}
+                </Button> 
+            )}
+
+            {/* Plan Mode: Generate Plan Button + Ghost Remove Button */} 
+            {viewMode === 'plan' && user && (
+                <div className="flex w-full gap-2"> 
+                    {/* Generate Plan Button (Placeholder) */} 
+                    <Button 
+                        variant="default" // Primary button style
+                        size="sm" 
+                        className="flex-grow" // Takes available space
+                        onClick={handleGeneratePlanClick}
+                        disabled={isGeneratingPlan || !user} // Disable if generating or not logged in
+                    >
+                        {isGeneratingPlan ? (
+                            <>
+                                <span className="mr-2 h-4 w-4 animate-spin border-2 border-current border-t-transparent rounded-full" />
+                                Generating...
+                            </>
+                        ) : (
+                            <>
+                                <Rocket className="mr-2 h-4 w-4" /> Generate Plan
+                            </>
+                        )}
+                    </Button>
+
+                    {/* Remove Button (Less prominent) */} 
+                    <Button 
+                        variant="ghost" // Ghost style for secondary action
+                        size="icon" 
+                        className="text-destructive hover:bg-destructive/10 flex-shrink-0" // Keep color, prevent grow/shrink
+                        // Disable remove button if not logged in, or if any action is loading/successful
+                        disabled={!user || buttonState === 'loading' || buttonState === 'success'} 
+                        onClick={(e) => {
+                             e.stopPropagation();
+                             handleRemoveRaceFromPlan(); // Directly call remove handler
+                        }}
+                    >
+                         {buttonState === 'loading' && finalButtonAction === handleRemoveRaceFromPlan ? (
+                             <span className="h-4 w-4 animate-spin border-2 border-current border-t-transparent rounded-full" />
+                         ) : buttonState === 'success' && finalButtonAction === handleRemoveRaceFromPlan ? (
+                             <CheckCircle className="h-4 w-4 text-green-600" /> 
+                         ) : buttonState === 'error' && finalButtonAction === handleRemoveRaceFromPlan ? (
+                             <AlertCircle className="h-4 w-4 text-destructive" />
+                         ) : (
+                             <Trash2 className="h-4 w-4" />
+                         )}
+                        <span className="sr-only">Remove from Plan</span>
+                    </Button>
+                 </div>
+            )}
         </CardFooter>
     </Card>
   );
