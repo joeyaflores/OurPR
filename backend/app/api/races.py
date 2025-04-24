@@ -36,8 +36,10 @@ async def get_races(
         if distance:
             query = query.eq("distance", distance)
         if flat_only:
-            # Assuming flatness_score 4 and 5 mean flat
-            query = query.gte("flatness_score", 4)
+            # Filter using the new total_elevation_gain column
+            FLAT_THRESHOLD = 500 # Match threshold used in AI query (adjust if needed)
+            print(f"Applying flat_only filter: total_elevation_gain <= {FLAT_THRESHOLD}")
+            query = query.lte("total_elevation_gain", FLAT_THRESHOLD)
         if start_date:
             query = query.gte("date", str(start_date))
         if end_date:

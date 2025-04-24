@@ -306,8 +306,8 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
                         {race.city}, {race.state} - {new Date(race.date).toLocaleDateString()}
                       </p>
                     </div>
-                     {/* Tooltip for Elevation - Ensure elevation is not null/undefined first */}
-                     {race.elevation != null && (
+                     {/* Tooltip for Elevation - Use total_elevation_gain */}
+                     {race.total_elevation_gain != null && (
                       <TooltipProvider delayDuration={100}>
                          <Tooltip>
                            <TooltipTrigger asChild>
@@ -316,10 +316,8 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
                                 className="flex items-center gap-1 shrink-0"
                                 >
                                 <Mountain className="h-3 w-3" />
-                                {/* Format if number, otherwise display raw */} 
-                                {typeof race.elevation === 'number'
-                                  ? `${(race.elevation as number).toLocaleString()} ft` 
-                                  : String(race.elevation)} {/* Cast non-numbers to string */} 
+                                {/* Display numeric elevation gain with unit */}
+                                {`${race.total_elevation_gain.toLocaleString()} ft of elevation gain`}
                               </Badge>
                             </TooltipTrigger>
                             <TooltipContent>
@@ -333,10 +331,12 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
                     {/* Basic Info */}
                     <div className="text-sm space-y-1"> {/* Add space-y-1 for better spacing */}
                       <p>Distance: {race.distance}</p>
-                      {race.elevation && (
+                      {/* Display total_elevation_gain if available */}
+                      {race.total_elevation_gain != null && (
                          <p className="flex items-center"> {/* Use flex for icon alignment */}
                            <Mountain className="h-4 w-4 mr-1.5 text-muted-foreground"/> {/* Add Mountain icon */}
-                           <span>Elevation: {race.elevation}</span> {/* Display elevation string */}
+                           {/* Display numeric elevation gain with unit */}
+                           <span>Elevation Gain: {race.total_elevation_gain.toLocaleString()} ft</span>
                          </p>
                       )}
                     </div>

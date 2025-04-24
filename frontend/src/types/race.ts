@@ -8,7 +8,7 @@ export interface Race {
   lng?: number;
   date: string; // API returns date as string now
   distance?: '5K' | '10K' | 'Half Marathon' | 'Marathon' | '50K' | '50 Miles' | '100K' | '100 Miles' | 'Other'; // Updated with ultra distances
-  elevation?: string;
+  total_elevation_gain?: number; // Added new numeric field
   website?: string;
   ai_summary?: string;
   pr_potential_score?: number;

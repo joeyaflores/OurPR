@@ -133,19 +133,17 @@ const MapLegend = () => {
           title="Show legend"
         >
           <div className="flex items-center gap-2">
-            <div className="flex -space-x-1">
-              {commonDistances.slice(0, 3).map((distance, i) => (
-                <span
-                  key={distance}
-                  className="w-3 h-3 rounded-full border-2 border-white"
-                  style={{ 
-                    backgroundColor: distanceColors[distance],
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                    zIndex: 3 - i
-                  }}
-                />
-              ))}
-            </div>
+            {commonDistances.slice(0, 3).map((distance, i) => (
+              <span
+                key={distance}
+                className="w-3 h-3 rounded-full border-2 border-white"
+                style={{ 
+                  backgroundColor: distanceColors[distance],
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                  zIndex: 3 - i
+                }}
+              />
+            ))}
             <span className="text-xs font-medium">Legend</span>
           </div>
         </button>
@@ -265,7 +263,10 @@ export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceI
                     />
                     <span>{race.date} - {race.distance}</span>
                   </div>
-                  {race.elevation && <div>Elevation: {race.elevation}</div>}
+                  {/* Use total_elevation_gain */}
+                  {race.total_elevation_gain != null && (
+                    <div>Elevation Gain: {race.total_elevation_gain.toLocaleString()} ft</div>
+                  )}
                   
                   {/* AI Summary */}
                   {race.ai_summary && (

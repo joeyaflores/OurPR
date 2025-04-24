@@ -117,10 +117,18 @@ async def query_supabase_with_filters(filters: ParsedFilters, supabase: Client) 
              query = query.eq("state", filters.state)
         if filters.distance:
             query = query.eq("distance", filters.distance)
+
+        # Apply flatness filter using the new 'total_elevation_gain' column
+        FLAT_THRESHOLD = 500  # Example: meters or feet - adjust as needed
+        HILLY_THRESHOLD = 800 # Example: meters or feet - adjust as needed
         if filters.flatness == "flat":
-            query = query.gte("flatness_score", 4)
+            print(f"Applying flatness filter: total_elevation_gain <= {FLAT_THRESHOLD}")
+            query = query.lte("total_elevation_gain", FLAT_THRESHOLD)
         elif filters.flatness == "hilly":
-            query = query.lte("flatness_score", 2)
+            print(f"Applying flatness filter: total_elevation_gain >= {HILLY_THRESHOLD}")
+            query = query.gte("total_elevation_gain", HILLY_THRESHOLD)
+        # If flatness is null or 'any', no filter is applied
+
         if filters.date_range:
             if filters.date_range.get("start"):
                 query = query.gte("date", filters.date_range["start"])

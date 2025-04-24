@@ -11,7 +11,7 @@ class RaceBase(BaseModel):
     lng: Optional[float] = None
     distance: Optional[Literal['5K', '10K', 'Half Marathon', 'Marathon', '50K', '50 Miles', '100K', '100 Miles', 'Other']] = None
     date: Optional[str] = None
-    elevation: Optional[str] = None
+    total_elevation_gain: Optional[int] = None
     flatness_score: Optional[int] = None  # e.g., 1-5 (1=very hilly, 5=very flat)
     pr_potential_score: Optional[float] = None
     ai_summary: Optional[str] = None
