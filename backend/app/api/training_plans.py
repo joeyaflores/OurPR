@@ -135,11 +135,13 @@ async def generate_training_plan(
     Runner's Personal Record (PR) for {race.distance or 'this distance'}: {user_pr_str}
 
     Instructions:
-    - Provide a week-by-week summary focusing on key workouts and overall goals for each week.
+    - Provide a week-by-week summary focusing on key workouts (like long runs, tempo, intervals if appropriate) and overall goals for each week.
     - Start from Week 1 and go up to Week {weeks_until}.
     - Keep summaries concise.
-    - Consider the runner's PR as an indicator of their current fitness level when suggesting paces or intensity (if applicable, otherwise focus on structure).
-    - Include a taper period in the final week(s) appropriate for the distance.
+    - Ensure long runs build gradually over the weeks.
+    - The peak long run usually occurs 2-3 weeks before the race. For Half Marathons, this peak is typically 10-12 miles. For Marathons, it's typically 18-20 miles. Training long runs should generally not exceed the actual race distance for sub-ultra distances.
+    - Include a taper period in the final week(s) appropriate for the distance (e.g., 1-2 weeks for Half Marathon, 2-3 weeks for Marathon), reducing mileage significantly.
+    - Consider the runner's PR mainly as an indicator of general fitness level to tailor the aggressiveness of the plan structure, but focus on providing a sound, typical structure.
     - Structure the output as a JSON object matching the following Pydantic model:
     
     ```json
