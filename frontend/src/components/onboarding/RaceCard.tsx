@@ -9,6 +9,7 @@ import { ExternalLink, CalendarDays, Thermometer, BarChart, Mountain, PlusCircle
 import { createClient } from '@/lib/supabase/client'; // Import Supabase client
 import type { User } from '@supabase/supabase-js';
 import { toast } from "sonner"; // Import toast
+import { Progress } from "@/components/ui/progress"; // Import Progress
 
 // Action States for the button
 type ActionState = 'idle' | 'loading' | 'success' | 'error';
@@ -20,8 +21,9 @@ interface RaceCardProps {
   userPr?: string | null; // Add optional prop for user's PR time string
   timeUntilRace?: string; // Add optional prop for time until race string
   trainingSuggestion?: string | null; // Add optional prop for training suggestion
-  onGeneratePlanRequest: (raceId: string | number) => void; // Callback to request plan generation
-  isGeneratingPlan: boolean; // Prop indicating if plan generation is in progress for this card
+  onGeneratePlanRequest?: (raceId: string | number) => void; // Callback to request plan generation - Make optional for discover view
+  isGeneratingPlan?: boolean; // Prop indicating if plan generation is in progress for this card - Make optional
+  progressPercent?: number | null; // <-- Add progress prop
 }
 
 // Add API Base URL (consider moving to a config file)
@@ -35,7 +37,8 @@ export function RaceCard({
     timeUntilRace,
     trainingSuggestion,
     onGeneratePlanRequest, // Destructure new prop
-    isGeneratingPlan // Destructure new prop
+    isGeneratingPlan,
+    progressPercent // <-- Destructure progress prop
 }: RaceCardProps) { 
     const supabase = createClient();
     const [user, setUser] = useState<User | null>(null);
@@ -180,9 +183,10 @@ export function RaceCard({
     const handleGeneratePlanClick = (e: React.MouseEvent) => {
         e.stopPropagation(); // Prevent card click if needed
         // Call the parent handler, passing the race ID
-        onGeneratePlanRequest(race.id);
+        if (onGeneratePlanRequest) { // Check if handler exists
+            onGeneratePlanRequest(race.id);
+        }
         // Parent component (MyPlanPage) will manage loading state & modal display
-        // toast.info("Personalized training plan generation coming soon!"); // Remove toast
     };
 
     const renderStat = (IconComponent: React.ElementType, label: string, value: React.ReactNode | undefined | null, unit: string = '') => {
@@ -261,6 +265,15 @@ export function RaceCard({
                  {race.distance ? <span className="font-medium">({race.distance})</span> : ''}
             </CardDescription>
         </CardHeader>
+
+        {/* Optional Progress Bar - Shown below header */} 
+        {progressPercent !== null && viewMode === 'plan' && (
+            <div className="px-6 pb-3 pt-1"> {/* Add some padding */} 
+                 <Progress value={progressPercent} className="w-full h-2" /> 
+                 {/* You could add labels here too if desired */}
+             </div>
+         )}
+
         <CardContent className="text-sm space-y-2 pt-0 pb-4 flex-grow">
              {renderStat(BarChart, "Flatness", renderStars(race.flatness_score))}
              {renderStat(Mountain, "Elevation Gain", race.total_elevation_gain, " ft")}

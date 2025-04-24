@@ -343,6 +343,7 @@ export default function MyPlanPage() {
                                 trainingSuggestion={trainingSuggestion}
                                 onGeneratePlanRequest={handleGeneratePlanRequest}
                                 isGeneratingPlan={isPlanGenerating && selectedRaceIdForPlan === race.id}
+                                progressPercent={calculateProgressPercent(race.distance, weeksUntil)}
                             />
                         );
                     })}
@@ -389,6 +390,28 @@ export default function MyPlanPage() {
         </div>
     );
 }
+
+// --- Helper Functions ---
+
+// Calculates the progress percentage based on assumed total plan length
+const calculateProgressPercent = (distance: Race['distance'], weeksRemaining: number | null): number | null => {
+    if (weeksRemaining === null || weeksRemaining < 0) return 100; // Treat past/today as 100% done
+
+    let totalPlanWeeks = 0;
+    switch (distance) {
+        case 'Marathon': totalPlanWeeks = 16; break;
+        case 'Half Marathon': totalPlanWeeks = 12; break;
+        case '10K': totalPlanWeeks = 8; break;
+        case '5K': totalPlanWeeks = 6; break;
+        default: return null; // Don't show progress for unknown/other distances
+    }
+
+    if (weeksRemaining >= totalPlanWeeks) return 0; // Not started based on typical duration
+
+    const weeksElapsed = totalPlanWeeks - weeksRemaining;
+    const progress = Math.max(0, Math.min(100, Math.round((weeksElapsed / totalPlanWeeks) * 100)));
+    return progress;
+};
 
 // Helper components needed for Skeleton (if not globally available)
 const Card = ({ children, className }: { children: React.ReactNode, className?: string }) => <div className={`border bg-card text-card-foreground shadow-sm rounded-lg ${className}`}>{children}</div>;
