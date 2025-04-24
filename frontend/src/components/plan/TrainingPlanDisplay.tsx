@@ -24,8 +24,13 @@ export function TrainingPlanDisplay({ plan }: TrainingPlanDisplayProps) {
         {plan.weeks.map((week) => (
           <AccordionItem value={`week-${week.week_number}`} key={week.week_number}>
             <AccordionTrigger>Week {week.week_number}</AccordionTrigger>
-            <AccordionContent>
-              {week.summary}
+            <AccordionContent className="space-y-2">
+              {week.estimated_weekly_mileage && (
+                <p className="text-sm font-medium text-muted-foreground">
+                    Est. Mileage: {week.estimated_weekly_mileage}
+                </p>
+              )}
+              <p className="text-sm">{week.summary}</p>
             </AccordionContent>
           </AccordionItem>
         ))}

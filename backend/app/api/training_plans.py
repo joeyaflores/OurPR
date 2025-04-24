@@ -136,6 +136,7 @@ async def generate_training_plan(
 
     Instructions:
     - Provide a week-by-week summary focusing on key workouts (like long runs, tempo, intervals if appropriate) and overall goals for each week.
+    - Also include an estimated total weekly mileage range (e.g., "20-25 miles" or "35-40 km") for each week.
     - Start from Week 1 and go up to Week {weeks_until}.
     - Keep summaries concise.
     - Ensure long runs build gradually over the weeks.
@@ -150,10 +151,10 @@ async def generate_training_plan(
       "race_distance": "{race.distance or 'Unknown'}",
       "total_weeks": {weeks_until},
       "weeks": [
-        {{"week_number": 1, "summary": "Description of week 1..."}},
-        {{"week_number": 2, "summary": "Description of week 2..."}},
+        {{"week_number": 1, "summary": "Description of week 1...", "estimated_weekly_mileage": "15-20 miles"}},
+        {{"week_number": 2, "summary": "Description of week 2...", "estimated_weekly_mileage": "18-23 miles"}},
         ...
-        {{"week_number": {weeks_until}, "summary": "Description of final week (taper)..."}}
+        {{"week_number": {weeks_until}, "summary": "Description of final week (taper)...", "estimated_weekly_mileage": "10-15 miles"}}
       ],
       "notes": ["Optional notes like 'Adjust based on feel', 'Remember to warm up', 'Consult a coach for personalized advice.'"]
     }}
