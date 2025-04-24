@@ -1,5 +1,5 @@
 export interface Race {
-  id: string | number; // Use string or number based on backend ID type (UUID is string)
+  id: string; // Use string or number based on backend ID type (UUID is string)
   name: string;
   // Add fields directly, making them optional as they might be null in DB
   city?: string;

@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { Race } from '@/lib/apiClient'; // Import the Race type
-import { ExternalLink, CalendarDays, Thermometer, BarChart, Mountain, PlusCircle, CheckCircle, AlertCircle, Trash2, Trophy, Clock, Flag, Rocket } from 'lucide-react'; // Icons
+import { ExternalLink, CalendarDays, Thermometer, BarChart, Mountain, PlusCircle, CheckCircle, AlertCircle, Trash2, Trophy, Clock, Flag, Rocket, Eye } from 'lucide-react'; // Icons
 import { createClient } from '@/lib/supabase/client'; // Import Supabase client
 import type { User } from '@supabase/supabase-js';
 import { toast } from "sonner"; // Import toast
@@ -22,8 +22,11 @@ interface RaceCardProps {
   timeUntilRace?: string; // Add optional prop for time until race string
   trainingSuggestion?: string | null; // Add optional prop for training suggestion
   onGeneratePlanRequest?: (raceId: string | number) => void; // Callback to request plan generation - Make optional for discover view
+  onViewPlanRequest?: (raceId: string | number) => void; // Callback to request viewing saved plan
   isGeneratingPlan?: boolean; // Prop indicating if plan generation is in progress for this card - Make optional
+  isViewingPlan?: boolean; // Prop indicating if plan viewing is in progress
   progressPercent?: number | null; // <-- Add progress prop
+  hasSavedPlan?: boolean; // <-- Add flag for saved plan
 }
 
 // Add API Base URL (consider moving to a config file)
@@ -36,9 +39,12 @@ export function RaceCard({
     userPr, 
     timeUntilRace,
     trainingSuggestion,
-    onGeneratePlanRequest, // Destructure new prop
+    onGeneratePlanRequest,
+    onViewPlanRequest,
     isGeneratingPlan,
-    progressPercent // <-- Destructure progress prop
+    isViewingPlan,
+    progressPercent,
+    hasSavedPlan
 }: RaceCardProps) { 
     const supabase = createClient();
     const [user, setUser] = useState<User | null>(null);
@@ -78,7 +84,7 @@ export function RaceCard({
                      // If backend returns 404 (no plan yet), treat as empty, not error
                     if (response.status === 404) {
                         setPlannedRaceIds(new Set());
-                        console.log(`RaceCard (${race.id}): No initial plan found (404).`);
+                        // console.log(`RaceCard (${race.id}): No initial plan found (404).`);
                     } else {
                         throw new Error(`Failed to fetch plan: ${response.status}`);
                     }
@@ -87,7 +93,7 @@ export function RaceCard({
                     const data: Race[] = await response.json(); 
                     // Extract the IDs to build the Set
                     setPlannedRaceIds(new Set(data.map(r => r.id)));
-                    console.log(`RaceCard (${race.id}): Fetched planned race objects, extracted IDs:`, data.map(r=>r.id));
+                    // console.log(`RaceCard (${race.id}): Fetched planned race objects, extracted IDs:`, data.map(r=>r.id));
                 }
             } catch (e) {
                 console.error(`RaceCard (${race.id}): Failed to fetch initial plan state:`, e);
@@ -187,6 +193,14 @@ export function RaceCard({
             onGeneratePlanRequest(race.id);
         }
         // Parent component (MyPlanPage) will manage loading state & modal display
+    };
+
+    // Handler for the view plan button
+    const handleViewPlanClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onViewPlanRequest) { // Check if handler exists
+            onViewPlanRequest(race.id);
+        }
     };
 
     const renderStat = (IconComponent: React.ElementType, label: string, value: React.ReactNode | undefined | null, unit: string = '') => {
@@ -350,19 +364,28 @@ export function RaceCard({
             {/* Plan Mode: Generate Plan Button + Ghost Remove Button */} 
             {viewMode === 'plan' && user && (
                 <div className="flex w-full gap-2"> 
-                    {/* Generate Plan Button (Placeholder) */} 
+                    {/* View or Generate Plan Button */} 
                     <Button 
-                        variant="default" // Primary button style
+                        variant="default" 
                         size="sm" 
-                        className="flex-grow" // Takes available space
-                        onClick={handleGeneratePlanClick}
-                        disabled={isGeneratingPlan || !user} // Disable if generating or not logged in
+                        className="flex-grow"
+                        onClick={hasSavedPlan ? handleViewPlanClick : handleGeneratePlanClick}
+                        disabled={isGeneratingPlan || isViewingPlan || !user} // Disable if generating, viewing, or not logged in
                     >
                         {isGeneratingPlan ? (
                             <>
                                 <span className="mr-2 h-4 w-4 animate-spin border-2 border-current border-t-transparent rounded-full" />
                                 Generating...
                             </>
+                         ) : isViewingPlan ? (
+                            <>
+                                <span className="mr-2 h-4 w-4 animate-spin border-2 border-current border-t-transparent rounded-full" />
+                                Loading Plan...
+                            </> 
+                        ) : hasSavedPlan ? (
+                             <>
+                                 <Eye className="mr-2 h-4 w-4" /> View Plan {/* Use Eye icon */} 
+                             </>
                         ) : (
                             <>
                                 <Rocket className="mr-2 h-4 w-4" /> Generate Plan

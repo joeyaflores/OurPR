@@ -105,7 +105,7 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
             // If backend returns 404 (no plan yet), treat as empty, not error
             if (response.status === 404) {
                  setPlannedRaceIds(new Set());
-                 console.log("RaceResults: No initial plan found (404).");
+                 // console.log("RaceResults: No initial plan found (404).");
             } else {
                 throw new Error(`Failed to fetch plan: ${response.status}`);
             }
@@ -114,7 +114,7 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
             const data: Race[] = await response.json(); 
             // Extract the IDs to build the Set
             setPlannedRaceIds(new Set(data.map(r => r.id)));
-            console.log("RaceResults: Fetched planned race objects, extracted IDs:", data.map(r=>r.id));
+            // console.log("RaceResults: Fetched planned race objects, extracted IDs:", data.map(r=>r.id));
           }
         } catch (e) {
           console.error("Failed to fetch initial plan state:", e);
@@ -278,7 +278,7 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
         >
           {races.map((race) => {
             // Log the individual race object here
-            console.log("Rendering Race Card for:", JSON.stringify(race, null, 2)); 
+            // console.log("Rendering Race Card for:", JSON.stringify(race, null, 2)); 
             
             const isSelected = race.id === selectedRaceId;
             const currentButtonState = buttonStates[race.id] || 'idle';
