@@ -29,7 +29,9 @@ import {
     isPast, 
     parseISO, 
     subWeeks, // <-- Import subWeeks
-    format // <-- Import format (for peak date)
+    format, // <-- Import format (for peak date)
+    startOfWeek,
+    addWeeks // <-- Import addWeeks
 } from 'date-fns'; // <-- Import date-fns functions
 
 // Add API Base URL (consider moving to a config file or env var)
@@ -357,6 +359,9 @@ export default function MyPlanPage() {
 
         let timeUntilRaceString: string = "Date TBD";
         let progressPercent: number | null = null;
+        let currentWeekNumber: number | null = null;
+        let totalPlanWeeks: number | null = null;
+
         if (race.date) {
             const raceDate = parseISO(race.date); // Use parseISO
             if (!isPast(raceDate) || isToday(raceDate)) {
@@ -364,14 +369,28 @@ export default function MyPlanPage() {
                 const weeksUntil = differenceInWeeks(raceDate, new Date());
                 timeUntilRaceString = `in ${weeksUntil} week${weeksUntil !== 1 ? 's' : ''}`;
                 
-                // Calculate progress (e.g., based on weeks passed vs total weeks)
-                // This is a placeholder - needs actual start date or total duration
-                // Example: Assume plan starts 16 weeks before
-                const totalWeeks = 16; 
-                const startDate = subWeeks(raceDate, totalWeeks);
-                const weeksPassed = differenceInWeeks(new Date(), startDate);
-                if (weeksPassed >= 0 && weeksPassed <= totalWeeks) {
-                    progressPercent = Math.max(0, Math.min(100, (weeksPassed / totalWeeks) * 100));
+                // Calculate progress based on the actual plan duration if available
+                const actualTotalWeeks = race.total_weeks; // Get total_weeks from the specific race data
+                if (actualTotalWeeks && actualTotalWeeks > 0) {
+                    totalPlanWeeks = actualTotalWeeks; // Store total weeks
+                    const startDate = startOfWeek(subWeeks(raceDate, actualTotalWeeks), { weekStartsOn: 1 });
+
+                    // --- REMOVE TEMPORARY: Simulate being 5 weeks into the plan ---
+                    // const realToday = new Date();
+                    // const simulatedToday = addWeeks(realToday, 5); // Add 5 weeks to today
+                    // const weeksPassed = differenceInWeeks(simulatedToday, startDate, { roundingMethod: 'floor' }); // Use simulatedToday
+                    const weeksPassed = differenceInWeeks(new Date(), startDate, { roundingMethod: 'floor' }); // Use real date
+                    // --- End REMOVE Temporary ---
+                    
+                    // Ensure weeksPassed is within the bounds [0, actualTotalWeeks]
+                    const boundedWeeksPassed = Math.max(0, Math.min(weeksPassed, actualTotalWeeks));
+                    
+                    // Calculate current week number (1-based), clamp to total weeks
+                    currentWeekNumber = Math.min(boundedWeeksPassed + 1, actualTotalWeeks); 
+
+                    progressPercent = (boundedWeeksPassed / actualTotalWeeks) * 100;
+                } else {
+                    progressPercent = null; // No progress if total_weeks is unknown or zero
                 }
             } else {
                 timeUntilRaceString = "Race Finished";
@@ -387,6 +406,8 @@ export default function MyPlanPage() {
             timeUntilRace: timeUntilRaceString,
             trainingSuggestion: trainingSuggestion, // Add suggestion
             progressPercent: progressPercent, // Add progress
+            currentWeekNumber: currentWeekNumber, // <-- Add current week
+            totalPlanWeeks: totalPlanWeeks // <-- Add total weeks
             // hasSavedPlan is already part of PlannedRaceDetail
         };
     });
@@ -434,6 +455,8 @@ export default function MyPlanPage() {
                             trainingSuggestion={raceWithDetails.trainingSuggestion}
                             progressPercent={raceWithDetails.progressPercent}
                             hasSavedPlan={raceWithDetails.has_generated_plan}
+                            currentWeekNumber={raceWithDetails.currentWeekNumber} // <-- Pass current week
+                            totalPlanWeeks={raceWithDetails.totalPlanWeeks} // <-- Pass total weeks
                             onGeneratePlanRequest={handleGeneratePlanRequest}
                             onViewPlanRequest={handleViewPlanRequest}
                             isGeneratingPlan={selectedRaceIdForPlan === raceWithDetails.id && isPlanGenerating}
@@ -487,7 +510,15 @@ export default function MyPlanPage() {
                         )}
 
                         {currentPlanOutline && !planGenerationError && (
-                            <TrainingPlanDisplay plan={currentPlanOutline} />
+                            // Find the selected race to pass its date
+                            (() => {
+                                const selectedRace = racesWithDetails.find(r => r.id === selectedRaceIdForPlan);
+                                if (selectedRace?.date) {
+                                    return <TrainingPlanDisplay plan={currentPlanOutline} raceDate={selectedRace.date} />;
+                                }
+                                // Handle case where race or date isn't found (should not happen if plan exists)
+                                return <p className="text-destructive text-center">Error: Could not find race date for this plan.</p>; 
+                            })()
                         )}
                     </div>
 

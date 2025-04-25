@@ -27,6 +27,8 @@ interface RaceCardProps {
   isViewingPlan?: boolean; // Prop indicating if plan viewing is in progress
   progressPercent?: number | null; // <-- Add progress prop
   hasSavedPlan?: boolean; // <-- Add flag for saved plan
+  currentWeekNumber?: number | null; // <-- Add prop for current week
+  totalPlanWeeks?: number | null; // <-- Add prop for total weeks
 }
 
 // Add API Base URL (consider moving to a config file)
@@ -44,7 +46,9 @@ export function RaceCard({
     isGeneratingPlan,
     isViewingPlan,
     progressPercent,
-    hasSavedPlan
+    hasSavedPlan,
+    currentWeekNumber,
+    totalPlanWeeks
 }: RaceCardProps) { 
     const supabase = createClient();
     const [user, setUser] = useState<User | null>(null);
@@ -283,8 +287,15 @@ export function RaceCard({
         {/* Optional Progress Bar - Shown below header */} 
         {progressPercent !== null && viewMode === 'plan' && (
             <div className="px-6 pb-3 pt-1"> {/* Add some padding */} 
+                 {/* Conditionally render the label */} 
+                 {currentWeekNumber && totalPlanWeeks ? (
+                     <p className="text-xs text-muted-foreground mb-1">
+                         Training Progress (Week {currentWeekNumber} / {totalPlanWeeks})
+                     </p>
+                 ) : (
+                     <p className="text-xs text-muted-foreground mb-1">Training Progress</p>
+                 )}
                  <Progress value={progressPercent} className="w-full h-2" /> 
-                 {/* You could add labels here too if desired */}
              </div>
          )}
 

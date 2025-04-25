@@ -20,6 +20,7 @@ class PlannedRaceDetail(Race): # Inherit fields from Race
     # Add fields specific to the relationship or needed context
     user_race_plan_id: uuid.UUID # ID of the entry in user_race_plans
     has_generated_plan: bool = Field(False, description="Indicates if a generated plan exists for this user and race")
+    total_weeks: Optional[int] = Field(None, description="Total weeks from the generated plan, if available")
 
     class Config:
         from_attributes = True # For Pydantic V2 
