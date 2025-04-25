@@ -50,39 +50,65 @@ async def get_user_plan(
         if not user_planned_races:
             return [] # No races planned
 
-        # 2. Get the IDs of races for which a plan HAS been generated for this user
-        planned_race_ids = [item['race_id'] for item in user_planned_races if item.get('race_id')]
-        saved_plan_race_ids = set()
-        if planned_race_ids: # Only query if there are races to check
-            saved_plan_response = supabase.table("user_generated_plans")\
-                                        .select("race_id")\
-                                        .eq("user_id", str(user_id))\
-                                        .in_("race_id", planned_race_ids)\
-                                        .execute()
+        planned_race_ids = {item['race_id'] for item in user_planned_races if item.get('race_id')}
+        
+        # 2. Fetch generated plan data (specifically total_weeks) for planned races
+        saved_plans_data = {}
+        if planned_race_ids: 
+            try:
+                saved_plan_response = supabase.table("user_generated_plans")\
+                                            .select("race_id, generated_plan")\
+                                            .eq("user_id", str(user_id))\
+                                            .in_("race_id", list(planned_race_ids))\
+                                            .execute()
 
-            if hasattr(saved_plan_response, 'data') and isinstance(saved_plan_response.data, list):
-                saved_plan_race_ids = {item['race_id'] for item in saved_plan_response.data}
-            else:
-                 print(f"Warning: Unexpected response fetching saved plan IDs for user {user_id}: {saved_plan_response}")
+                if hasattr(saved_plan_response, 'data') and isinstance(saved_plan_response.data, list):
+                    for item in saved_plan_response.data:
+                        race_id = item.get('race_id')
+                        plan_json = item.get('generated_plan')
+                        if race_id and plan_json and isinstance(plan_json, dict):
+                            total_weeks = plan_json.get('total_weeks')
+                            # Store race_id and total_weeks if valid
+                            if isinstance(total_weeks, int):
+                                saved_plans_data[race_id] = {"has_generated_plan": True, "total_weeks": total_weeks}
+                            else:
+                                # Plan exists but total_weeks missing/invalid? Log and mark as having plan
+                                print(f"Warning: Saved plan for race {race_id} is missing or has invalid 'total_weeks'. Plan data: {plan_json}")
+                                saved_plans_data[race_id] = {"has_generated_plan": True, "total_weeks": None}
+                        else:
+                            # Fallback: Mark as having plan even if data is weird, but no total_weeks
+                            if race_id:
+                                saved_plans_data[race_id] = {"has_generated_plan": True, "total_weeks": None}
+                else:
+                    print(f"Warning: Unexpected response fetching saved plan details for user {user_id}: {saved_plan_response}")
+
+            except PostgrestAPIError as e:
+                print(f"Warning: Database error fetching saved plan details for user {user_id}: {e}")
+            except Exception as e:
+                print(f"Warning: Error processing saved plan details for user {user_id}: {e}")
 
         # 3. Combine the data
         results: List[PlannedRaceDetail] = []
         for item in user_planned_races:
-            if not item.get('races'): # Skip if race data is missing (shouldn't happen with inner join default)
+            race_data = item.get('races')
+            if not race_data: # Skip if race data is missing
                 continue
                 
-            race_data = item['races']
             race_id = item.get('race_id')
-            has_plan = race_id in saved_plan_race_ids
+            plan_info = saved_plans_data.get(race_id, {"has_generated_plan": False, "total_weeks": None}) # Default if no saved plan found
             
             combined_data = {
                 **race_data,
-                "user_race_plan_id": item['id'], # Use the actual user_race_plan ID
-                "has_generated_plan": has_plan
+                "user_race_plan_id": item['id'],
+                "has_generated_plan": plan_info["has_generated_plan"],
+                "total_weeks": plan_info["total_weeks"]
             }
             
             try:
                 planned_race = PlannedRaceDetail(**combined_data)
+                # --- Add Debugging ---
+                # print(f"[get_user_plan Debug] Combined data for race {race_id}: {combined_data}") 
+                # --- End Debugging ---
                 results.append(planned_race)
             except ValidationError as e:
                 print(f"Validation Error combining plan data: {e}, data: {combined_data}")
