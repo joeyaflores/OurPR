@@ -29,6 +29,7 @@ interface RaceCardProps {
   hasSavedPlan?: boolean; // <-- Add flag for saved plan
   currentWeekNumber?: number | null; // <-- Add prop for current week
   totalPlanWeeks?: number | null; // <-- Add prop for total weeks
+  isPrOfficial?: boolean | null; // <-- Add prop for PR official status
 }
 
 // Add API Base URL (consider moving to a config file)
@@ -48,7 +49,8 @@ export function RaceCard({
     progressPercent,
     hasSavedPlan,
     currentWeekNumber,
-    totalPlanWeeks
+    totalPlanWeeks,
+    isPrOfficial
 }: RaceCardProps) { 
     const supabase = createClient();
     const [user, setUser] = useState<User | null>(null);
@@ -310,6 +312,12 @@ export function RaceCard({
                  <div className="flex items-center text-sm text-blue-600 font-medium pt-1">
                      <Trophy className="mr-1.5 h-4 w-4 flex-shrink-0" />
                      <span>Your PR: {userPr}</span>
+                     {/* Add Official/Unofficial indicator */} 
+                     {isPrOfficial !== null && (
+                         <span className="ml-1.5 text-xs text-muted-foreground">
+                             ({isPrOfficial ? 'Official' : 'Unofficial'})
+                         </span>
+                     )}
                  </div>
              )}
 

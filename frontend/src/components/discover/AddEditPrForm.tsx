@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/popover";
 import type { UserPr } from "@/types/user_pr";
 import { useState } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 // Define standard distances for the dropdown
 // TODO: Potentially fetch this or share with DiscoverPage
@@ -45,6 +46,8 @@ const formSchema = z.object({
   time: z.string().regex(/^(\d{1,2}:)?([0-5]?\d):([0-5]?\d)$/, {
     message: "Invalid time format (HH:MM:SS or MM:SS)",
   }),
+  is_official: z.boolean(),
+  race_name: z.string().optional(),
   // Optional: Add race_id later if needed
 });
 
@@ -57,6 +60,8 @@ type PrEditData = {
     distance: string;
     date: string | Date; // Accept string or Date
     time_in_seconds: number;
+    is_official?: boolean | null; // Allow null to match UserPr type
+    race_name?: string | null; // Added
 };
 
 interface AddEditPrFormProps {
@@ -96,11 +101,14 @@ export function AddEditPrForm({
       distance: prToEdit?.distance || "",
       date: prToEdit?.date ? new Date(prToEdit.date) : undefined, // Ensure date is a Date object
       time: prToEdit?.time_in_seconds ? formatSecondsToHMS(prToEdit.time_in_seconds) : "",
+      is_official: prToEdit?.is_official ?? true,
+      race_name: prToEdit?.race_name || "",
     },
   });
 
   // Wrapper for the onSubmit prop to handle data transformation
   async function handleFormSubmit(values: AddEditPrFormValues) {
+    // console.log("[AddEditPrForm Debug] Form values before calling onSubmit:", values);
     await onSubmit(values, prToEdit?.id); // Pass optional ID for updates
   }
 
@@ -207,6 +215,43 @@ export function AddEditPrForm({
                 </PopoverContent>
               </Popover>
               <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {/* Race Name (Optional) */}
+        <FormField
+          control={form.control}
+          name="race_name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Race Name (Optional)</FormLabel>
+              <FormControl>
+                <Input placeholder="E.g., Boston Marathon, Local Turkey Trot" {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {/* Official Time Checkbox */}
+        <FormField
+          control={form.control}
+          name="is_official"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 shadow-sm">
+              <FormControl>
+                <Checkbox
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              </FormControl>
+              <div className="space-y-1 leading-none">
+                <FormLabel>Official Race Time</FormLabel>
+                <FormDescription>
+                  Was this time recorded during an official, timed race event?
+                </FormDescription>
+              </div>
             </FormItem>
           )}
         />
