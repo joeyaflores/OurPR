@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { SiteHeader } from "@/components/SiteHeader";
 import AuthButton from "@/components/AuthButton";
 import { Toaster } from "@/components/ui/sonner";
+import { Analytics } from "@vercel/analytics/react";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,6 +41,7 @@ export default function RootLayout({
           <div className="flex-1">{children}</div>
           <Toaster richColors />
         </div>
+        <Analytics />
       </body>
     </html>
   );
