@@ -25,6 +25,7 @@ frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
 # Add your Vercel production URL and potentially preview URLs here
 origins = [
     frontend_url, # Dynamically set from FRONTEND_URL
+    "https://ourpr.app", # Explicitly allow the production domain
     # Example for Vercel preview URLs (more specific is better)
     # "https://our-pr-joeyflores74s-projects-*.vercel.app",
 ]
