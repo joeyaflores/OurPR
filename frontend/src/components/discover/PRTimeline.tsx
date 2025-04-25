@@ -180,20 +180,26 @@ export function PRTimeline() {
         return;
     }
 
-    const prData = {
-      user_id: session.user.id, // Get user ID from session
-      distance: values.distance,
-      date: format(values.date, 'yyyy-MM-dd'), // Format date for API
-      time_in_seconds: timeInSeconds,
-      // race_id: null // TODO: Add if linking to races
+    // Construct payload from form values
+    const prPayload: Record<string, any> = {
+        distance: values.distance,
+        date: format(values.date, 'yyyy-MM-dd'), 
+        time_in_seconds: timeInSeconds,
+        is_official: values.is_official,
+        race_name: values.race_name || null
     };
+
+    // Add user_id only for POST (create), not for PUT (update)
+    if (!prId) {
+        prPayload.user_id = session.user.id;
+    }
 
     const url = prId
       ? `${API_BASE_URL}/api/users/me/prs/${prId}`
       : `${API_BASE_URL}/api/users/me/prs`;
     const method = prId ? 'PUT' : 'POST';
 
-    console.log(`Submitting PR (${method}) to ${url}`, prData);
+    console.log(`Submitting PR (${method}) to ${url}`, prPayload);
 
     try {
       const response = await fetch(url, {
@@ -202,7 +208,7 @@ export function PRTimeline() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify(prData),
+        body: JSON.stringify(prPayload),
       });
 
       if (!response.ok) {

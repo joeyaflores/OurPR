@@ -353,8 +353,13 @@ export default function MyPlanPage() {
     const racesWithDetails = plannedRaces.map(race => {
         const relevantPr = userPrs.find(pr => pr.distance === race.distance);
         let userPrString: string | null = null;
+        let isPrOfficial: boolean | null = null; // <-- Variable for PR status
         if (relevantPr) {
             userPrString = formatTime(relevantPr.time_in_seconds);
+            isPrOfficial = relevantPr.is_official ?? null; // <-- Get status (handle null/undefined from older data)
+            // --- Add Debug Log ---
+            console.log(`[MyPlanPage Debug] Race: ${race.name}, Relevant PR:`, relevantPr, `isPrOfficial set to:`, isPrOfficial);
+            // --- End Debug Log ---
         }
 
         let timeUntilRaceString: string = "Date TBD";
@@ -407,7 +412,8 @@ export default function MyPlanPage() {
             trainingSuggestion: trainingSuggestion, // Add suggestion
             progressPercent: progressPercent, // Add progress
             currentWeekNumber: currentWeekNumber, // <-- Add current week
-            totalPlanWeeks: totalPlanWeeks // <-- Add total weeks
+            totalPlanWeeks: totalPlanWeeks, // <-- Add total weeks
+            isPrOfficial: isPrOfficial, // <-- Add PR status
             // hasSavedPlan is already part of PlannedRaceDetail
         };
     });
@@ -457,6 +463,7 @@ export default function MyPlanPage() {
                             hasSavedPlan={raceWithDetails.has_generated_plan}
                             currentWeekNumber={raceWithDetails.currentWeekNumber} // <-- Pass current week
                             totalPlanWeeks={raceWithDetails.totalPlanWeeks} // <-- Pass total weeks
+                            isPrOfficial={raceWithDetails.isPrOfficial} // <-- Pass PR status
                             onGeneratePlanRequest={handleGeneratePlanRequest}
                             onViewPlanRequest={handleViewPlanRequest}
                             isGeneratingPlan={selectedRaceIdForPlan === raceWithDetails.id && isPlanGenerating}

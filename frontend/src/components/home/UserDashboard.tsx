@@ -225,6 +225,8 @@ export default function UserDashboard({ user }: UserDashboardProps) {
        distance: values.distance,
        date: format(values.date, 'yyyy-MM-dd'),
        time_in_seconds: timeInSeconds,
+       is_official: values.is_official,
+       race_name: values.race_name || null,
      };
 
      const url = prId
@@ -232,22 +234,29 @@ export default function UserDashboard({ user }: UserDashboardProps) {
        : `${API_BASE_URL}/api/users/me/prs`;
      const method = prId ? 'PUT' : 'POST';
 
-     console.log(`Submitting PR from Dashboard (${method}) to ${url}`, method === 'PUT' ? values : prPayload);
+     // console.log(`Submitting PR from Dashboard (${method}) to ${url}`, method === 'PUT' ? values : prPayload);
 
-     // --- Construct Body --- 
+     // --- Construct Body ---
      let requestBody;
      if (method === 'PUT') {
          // Only include fields allowed by UserPrUpdate model
-         const putPayload: { date?: string; time_in_seconds?: number } = {};
-         if (values.date) {
-             putPayload.date = format(values.date, 'yyyy-MM-dd');
-         }
+         const putPayload: Record<string, any> = {};
+         // Check which fields are present in the form values and add them
+         if (values.distance) putPayload.distance = values.distance;
+         if (values.date) putPayload.date = format(values.date, 'yyyy-MM-dd');
          if (timeInSeconds !== undefined && !isNaN(timeInSeconds)) {
              putPayload.time_in_seconds = timeInSeconds;
          }
-         // TODO: Add race_id here if implemented in the form
+         // Explicitly handle boolean, checking if it's defined in values
+         if (values.is_official !== undefined) {
+             putPayload.is_official = values.is_official;
+         }
+         // Handle race_name, allowing it to be set to null
+         if (values.race_name !== undefined) { // Check if key exists
+             putPayload.race_name = values.race_name || null;
+         }
 
-         // Prevent sending empty update request if no relevant fields changed
+         // Prevent sending empty update request
          if (Object.keys(putPayload).length === 0) {
             toast.info("No changes detected to save.");
             setIsSubmitting(false);
@@ -255,7 +264,7 @@ export default function UserDashboard({ user }: UserDashboardProps) {
          }
          requestBody = JSON.stringify(putPayload);
      } else {
-         // POST uses the full prPayload (includes user_id)
+         // POST uses the full prPayload (includes user_id, is_official, race_name)
          requestBody = JSON.stringify(prPayload);
      }
 

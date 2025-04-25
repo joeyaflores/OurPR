@@ -77,10 +77,26 @@ async def create_my_pr(
         raise HTTPException(status_code=403, detail="Cannot create PR for another user")
 
     try:
+        # --- Debug Log 1: Check parsed input ---
+        print(f"[create_my_pr Debug] Parsed input (pr_in): {pr_in}")
+        # --- End Debug Log 1 ---
+
         # Convert Pydantic model to dict for insertion
-        pr_data = pr_in.model_dump(exclude_unset=True) # Pydantic v2
+        # Use .model_dump() for Pydantic V2, ensuring alias generator isn't needed here
+        pr_data = pr_in.model_dump() 
+        
+        # Remove user_id from dict before re-assigning to avoid potential conflicts
+        # if the model structure changes later
+        if 'user_id' in pr_data: del pr_data['user_id']
+
+        # Add required fields / ensure correct types
         pr_data['user_id'] = str(user_id) # Ensure user_id is string for Supabase
-        pr_data['date'] = pr_data['date'].isoformat() # Convert date to ISO string
+        pr_data['date'] = pr_in.date.isoformat() # Convert date to ISO string
+        # is_official and race_name should be included from model_dump() if present
+
+        # --- Debug Log 2: Check data before insert ---
+        print(f"[create_my_pr Debug] Data before insert (pr_data): {pr_data}")
+        # --- End Debug Log 2 ---
 
         response = supabase.table("user_prs").insert(pr_data).execute()
 
@@ -114,21 +130,22 @@ async def update_my_pr(
     user_id = current_user.id
 
     try:
-        # Convert Pydantic model to dict, excluding unset values
+        # Convert Pydantic model to dict, excluding unset values by default
         update_data = pr_update.model_dump(exclude_unset=True)
         if not update_data:
             raise HTTPException(status_code=400, detail="No update data provided")
 
-        # Explicitly handle date string conversion
-        if 'date' in update_data and update_data['date']:
+        # Explicitly handle date string conversion if present
+        if 'date' in update_data and isinstance(update_data['date'], date_obj):
+            update_data['date'] = update_data['date'].isoformat()
+        elif 'date' in update_data: # Handle case where date might be sent as string
             try:
-                # Parse the string (expecting YYYY-MM-DD)
-                parsed_date = date_obj.fromisoformat(update_data['date'])
-                # Convert back to ISO string for Supabase update
-                update_data['date'] = parsed_date.isoformat()
-            except ValueError:
-                # Handle invalid date format string from client
-                raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+                 parsed_date = date_obj.fromisoformat(str(update_data['date']))
+                 update_data['date'] = parsed_date.isoformat()
+            except (ValueError, TypeError):
+                 raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+        
+        # is_official and race_name should be included from model_dump() if set in pr_update
 
         # Update the record, ensuring it belongs to the current user
         response = supabase.table("user_prs") \
