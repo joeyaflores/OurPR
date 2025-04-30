@@ -11,6 +11,10 @@ from ..models.user_pr import UserPr # Import the UserPr model
 from .auth import get_current_user # Import the auth dependency
 # Add UserPrCreate and UserPrUpdate imports
 from ..models.user_pr import UserPrCreate, UserPrUpdate
+# Import the achievement service
+from ..services.achievement_service import check_and_award_achievements
+# Import BackgroundTasks
+from fastapi import BackgroundTasks 
 
 router = APIRouter()
 
@@ -62,6 +66,7 @@ async def get_my_prs(
 async def create_my_pr(
     *,
     pr_in: UserPrCreate,
+    background_tasks: BackgroundTasks, # Add BackgroundTasks dependency
     supabase: Client = Depends(get_supabase_client),
     current_user: SupabaseUser = Depends(get_current_user)
 ):
@@ -106,7 +111,19 @@ async def create_my_pr(
 
         # Assuming Supabase returns the created row(s) in response.data
         created_pr_data = response.data[0]
-        return created_pr_data # Pydantic will parse this dict into UserPr
+        # Parse the dictionary into the Pydantic model to pass to the service
+        created_pr_model = UserPr.model_validate(created_pr_data)
+
+        # --- Call achievement check in the background ---
+        background_tasks.add_task(
+            check_and_award_achievements,
+            supabase=supabase,
+            user_id=user_id,
+            pr_data=created_pr_model # Pass the validated model
+        )
+        # --- End achievement call ---
+
+        return created_pr_model # Return the validated model
 
     except HTTPException as e:
         raise e
@@ -120,6 +137,7 @@ async def update_my_pr(
     *,
     pr_id: uuid.UUID,
     pr_update: UserPrUpdate,
+    background_tasks: BackgroundTasks, # Add BackgroundTasks dependency
     supabase: Client = Depends(get_supabase_client),
     current_user: SupabaseUser = Depends(get_current_user)
 ):
@@ -147,6 +165,10 @@ async def update_my_pr(
         
         # is_official and race_name should be included from model_dump() if set in pr_update
 
+        # --- Debug Log (Optional): Before Update ---
+        print(f"[update_my_pr Debug] Update data for PR {pr_id}: {update_data}")
+        # --- End Debug Log ---
+
         # Update the record, ensuring it belongs to the current user
         response = supabase.table("user_prs") \
             .update(update_data) \
@@ -165,7 +187,19 @@ async def update_my_pr(
 
         # Assuming Supabase returns the updated row(s) in response.data
         updated_pr_data = response.data[0]
-        return updated_pr_data # Pydantic will parse
+        # Parse the dictionary into the Pydantic model
+        updated_pr_model = UserPr.model_validate(updated_pr_data)
+
+        # --- Call achievement check in the background ---
+        background_tasks.add_task(
+            check_and_award_achievements,
+            supabase=supabase,
+            user_id=user_id,
+            pr_data=updated_pr_model # Pass the validated model
+        )
+        # --- End achievement call ---
+
+        return updated_pr_model # Return the validated model
 
     except HTTPException as e:
         raise e
