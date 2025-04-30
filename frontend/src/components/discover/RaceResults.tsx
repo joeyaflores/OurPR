@@ -241,7 +241,7 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
 
   return (
     <section className="mt-6">
-      <h2 className="text-xl font-semibold mb-4 text-center">
+      <h2 className="text-2xl font-semibold mb-4 text-center">
         {/* Update title based on loading/error state */}
         {isLoading ? 'Loading Races...' : error ? 'Error' : races.length > 0 ? `${races.length} Races Found` : 'No Races Found'}
       </h2>
@@ -331,7 +331,7 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
                   {/* Image Container */}
                   <img 
                     src={race.image_url || getPlaceholderImage(race.distance)} 
-                    alt={`Image of ${race.name}`} 
+                    alt={`${race.name} - ${race.distance} race course`} 
                     className="w-full h-32 object-cover" // Adjust height (h-32) as needed
                     onError={(e) => {
                       // Optional: Handle image load errors, e.g., set to default placeholder

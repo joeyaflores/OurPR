@@ -1,4 +1,4 @@
-;import Link from 'next/link';
+import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server'; // Corrected import name
 import {
@@ -14,6 +14,18 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge'; // For potentially showing race dates
 import { User } from '@supabase/supabase-js'; // Import User type
 import UserDashboard from '@/components/home/UserDashboard'; // Import the new component
+import type { Metadata } from 'next'; // Import Metadata type
+
+// Add Metadata Export
+export const metadata: Metadata = {
+  // Title will use default from layout template
+  description: 'Your personal running dashboard on Our PR. View recent activity, PRs, upcoming races, and weekly goals.',
+  // Add specific OpenGraph details for the home/dashboard page if desired
+  openGraph: {
+      // title: 'Your Running Dashboard | Our PR', // Example if you want to override layout default
+      description: 'View your running progress, upcoming races, and goals on Our PR.',
+    },
+}
 
 // Helper function (can be moved to utils later)
 function formatTime(totalSeconds: number | null): string {

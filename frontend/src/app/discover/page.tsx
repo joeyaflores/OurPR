@@ -1,4 +1,8 @@
-"use client"; // Need state for filters, so convert to Client Component
+"use client"; // Moved to the top
+
+// Removed Metadata export as it cannot be in a Client Component
+// import type { Metadata } from 'next'
+// export const metadata: Metadata = { ... };
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { ChatSearchInput } from "@/components/discover/ChatSearchInput";
