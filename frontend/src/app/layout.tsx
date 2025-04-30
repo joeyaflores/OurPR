@@ -18,8 +18,22 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OurPR - Find Your Next Race",
-  description: "Discover races and track your personal records.",
+  metadataBase: new URL('https://ourpr.app'),
+  title: {
+    template: '%s | Our PR',
+    default: 'Our PR - Running Log, Race Discovery, PR Tracking',
+  },
+  description: 'Log your runs, track personal records, discover new races, generate training plans, and achieve your running goals with Our PR.',
+  openGraph: {
+    title: {
+      template: '%s | Our PR',
+      default: 'Our PR - Running Log, Race Discovery, PR Tracking',
+    },
+    description: 'Log your runs, track personal records, discover new races, generate training plans, and achieve your running goals with Our PR.',
+    siteName: 'Our PR',
+    locale: 'en_US',
+    type: 'website',
+  },
 };
 
 export default function RootLayout({
