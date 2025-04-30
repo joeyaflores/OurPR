@@ -1204,11 +1204,11 @@ export default function UserDashboard({ user }: UserDashboardProps) {
                              >
                                 Log New PR
                              </Button>
-                             <Link href="/pr-timeline" passHref>
+                             {/* <Link href="/pr-timeline" passHref>
                                 <Button variant="outline" size="sm">
                                    View All PRs
                                 </Button>
-                             </Link>
+                             </Link> */}
                           </CardFooter>
                     </Card>
                 </motion.div>
