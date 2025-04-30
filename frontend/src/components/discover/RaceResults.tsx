@@ -346,7 +346,8 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
                         {race.name}
                       </CardTitle>
                       <p className="text-sm text-muted-foreground pt-1">
-                        {race.city}, {race.state} - {new Date(race.date).toLocaleDateString()}
+                        {/* Fix: Add T00:00:00 to parse date string as local time */}
+                        {race.city}, {race.state} - {new Date(race.date + 'T00:00:00').toLocaleDateString()}
                       </p>
                     </div>
                      {/* Tooltip for Elevation - Use total_elevation_gain */}
