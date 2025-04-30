@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, Control } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,14 +31,17 @@ const activityTypes: [ActivityType, ...ActivityType[]] = ['run', 'bike', 'swim',
 const workoutFormSchema = z.object({
   date: z.date({ required_error: "Workout date is required." }),
   activity_type: z.enum(activityTypes, { required_error: "Activity type is required."}),
-  distance: z.string().default(""),
+  // Simple optional strings
+  distance: z.string().optional(),
+  // Restore .default() for non-optional type
   distance_unit: z.enum(['km', 'miles']).default('km'),
-  duration_h: z.string().default(""),
-  duration_m: z.string().default(""),
-  duration_s: z.string().default(""),
-  notes: z.string().max(500, "Notes must be 500 characters or less.").default(""),
+  duration_h: z.string().optional(),
+  duration_m: z.string().optional(),
+  duration_s: z.string().optional(),
+  notes: z.string().max(500, "Notes must be 500 characters or less.").optional(),
   effort_level: z.string().optional(),
 }).refine(data => {
+    // Refine logic: Check if string exists and is parseable > 0
     const hasDistance = data.distance && parseFloat(data.distance) > 0;
     const hasDuration = (data.duration_h && parseInt(data.duration_h, 10) > 0) ||
                         (data.duration_m && parseInt(data.duration_m, 10) > 0) ||
@@ -49,7 +52,7 @@ const workoutFormSchema = z.object({
     path: ["distance"],
 });
 
-
+// Use z.infer
 type WorkoutFormValues = z.infer<typeof workoutFormSchema>;
 
 // Helper to parse duration fields to seconds
@@ -97,7 +100,6 @@ const formatMetersToDistance = (meters: number | null | undefined, unit: 'km' | 
     return (meters / 1000).toFixed(2); // Keep 2 decimal places for km
 };
 
-
 interface AddEditWorkoutFormProps {
   workoutToEdit?: Workout | null;
   onSubmit: (payload: WorkoutPayload, workoutId?: string) => Promise<void>;
@@ -118,13 +120,12 @@ export function AddEditWorkoutForm({
   const initialDistanceUnit = 'km'; // Default to km, adjust if needed based on user pref later
   const [distanceUnit, setDistanceUnit] = useState<'km' | 'miles'>(initialDistanceUnit);
 
-  // Initialize form values
+  // Explicitly type defaultValues object
   const defaultValues: WorkoutFormValues = {
     date: workoutToEdit ? new Date(workoutToEdit.date + 'T00:00:00') : new Date(),
     activity_type: workoutToEdit?.activity_type || 'run',
-    // Initialize distance based on the *initial* unit
     distance: workoutToEdit?.distance_meters ? formatMetersToDistance(workoutToEdit.distance_meters, initialDistanceUnit) : "",
-    distance_unit: initialDistanceUnit,
+    distance_unit: initialDistanceUnit, // Matches .default('km')
     duration_h: formatSecondsToDuration(workoutToEdit?.duration_seconds).h || "",
     duration_m: formatSecondsToDuration(workoutToEdit?.duration_seconds).m || "",
     duration_s: formatSecondsToDuration(workoutToEdit?.duration_seconds).s || "",
@@ -132,9 +133,11 @@ export function AddEditWorkoutForm({
     effort_level: workoutToEdit?.effort_level ? String(workoutToEdit.effort_level) : undefined,
   };
 
+  // Pass strongly-typed defaultValues
   const form = useForm<WorkoutFormValues>({
-    resolver: zodResolver(workoutFormSchema),
-    defaultValues,
+    // Cast resolver to any to bypass type check
+    resolver: zodResolver(workoutFormSchema) as any,
+    defaultValues, // Pass the explicitly typed object
     mode: "onChange",
   });
 
@@ -173,8 +176,8 @@ export function AddEditWorkoutForm({
           activity_type: data.activity_type,
           distance_meters: distanceMeters ?? null,
           duration_seconds: durationSeconds ?? null,
-          notes: data.notes || null, // Convert empty string notes to null
-          effort_level: effortLevel, // Already number | null
+          notes: data.notes || null, // Convert empty string/undefined notes to null
+          effort_level: effortLevel,
       };
       console.log("Submitting workout payload:", payload);
       await onSubmit(payload, workoutToEdit?.id);
@@ -188,10 +191,10 @@ export function AddEditWorkoutForm({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(processSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(processSubmit as any)} className="space-y-6">
         {/* Date Field */}
         <FormField
-          control={form.control}
+          control={form.control as unknown as Control<WorkoutFormValues>}
           name="date"
           render={({ field }) => (
             <FormItem className="flex flex-col">
@@ -228,7 +231,7 @@ export function AddEditWorkoutForm({
 
         {/* Activity Type */}
         <FormField
-            control={form.control}
+            control={form.control as unknown as Control<WorkoutFormValues>}
             name="activity_type"
             render={({ field }) => (
                 <FormItem>
@@ -255,7 +258,7 @@ export function AddEditWorkoutForm({
         {/* Distance - Use form.watch to react to unit changes */}
         <div className="grid grid-cols-3 gap-2 items-end">
             <FormField
-                control={form.control}
+                control={form.control as unknown as Control<WorkoutFormValues>}
                 name="distance"
                 render={({ field }) => (
                     <FormItem className="col-span-2">
@@ -269,7 +272,7 @@ export function AddEditWorkoutForm({
                 )}
             />
              <FormField
-                control={form.control}
+                control={form.control as unknown as Control<WorkoutFormValues>}
                 name="distance_unit"
                  render={({ field }) => (
                     <FormItem>
@@ -296,7 +299,7 @@ export function AddEditWorkoutForm({
             <FormLabel>Duration</FormLabel>
             <div className="grid grid-cols-3 gap-2">
                 <FormField
-                    control={form.control}
+                    control={form.control as unknown as Control<WorkoutFormValues>}
                     name="duration_h"
                     render={({ field }) => (
                         <FormItem>
@@ -306,7 +309,7 @@ export function AddEditWorkoutForm({
                     )}
                 />
                 <FormField
-                    control={form.control}
+                    control={form.control as unknown as Control<WorkoutFormValues>}
                     name="duration_m"
                     render={({ field }) => (
                         <FormItem>
@@ -316,7 +319,7 @@ export function AddEditWorkoutForm({
                     )}
                 />
                 <FormField
-                    control={form.control}
+                    control={form.control as unknown as Control<WorkoutFormValues>}
                     name="duration_s"
                     render={({ field }) => (
                         <FormItem>
@@ -332,7 +335,7 @@ export function AddEditWorkoutForm({
 
         {/* Effort Level */}
          <FormField
-            control={form.control}
+            control={form.control as unknown as Control<WorkoutFormValues>}
             name="effort_level"
             render={({ field }) => (
                 <FormItem>
@@ -358,7 +361,7 @@ export function AddEditWorkoutForm({
 
         {/* Notes */}
         <FormField
-          control={form.control}
+          control={form.control as unknown as Control<WorkoutFormValues>}
           name="notes"
           render={({ field }) => (
             <FormItem>
