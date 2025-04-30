@@ -20,6 +20,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { AddEditPrForm } from '@/components/discover/AddEditPrForm'; // Reuse the form
 import { toast } from "sonner";
@@ -30,7 +31,7 @@ import { Separator } from "@/components/ui/separator"; // Import Separator
 import { EarnedAchievementDetail } from '@/types/achievement'; // Import new type
 import AchievementIcon from '@/components/icons/AchievementIcon'; // Import icon component
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; // For showing date
-import { PlusCircle, Activity, Goal as GoalIcon } from 'lucide-react'; // Icon for Log Workout button, Activity, GoalIcon
+import { PlusCircle, Activity, Goal as GoalIcon, MoreHorizontal } from 'lucide-react'; // Icon for Log Workout button, Activity, GoalIcon
 import { AddEditWorkoutForm } from '@/components/log/AddEditWorkoutForm'; // Import the new form
 import type { Workout } from '@/types/workout'; // Import Workout type
 import type { PlannedRaceDetail } from '@/types/planned_race'; // Assuming this type exists and is correct
@@ -41,14 +42,15 @@ import { SetEditWeeklyGoalForm } from '@/components/goals/SetEditWeeklyGoalForm'
 // --- Gamification Helper Imports ---
 import {
   differenceInWeeks,
-  formatDistanceToNowStrict,
   isFuture,
   compareAsc,
   startOfWeek,
   subWeeks,
   formatRelative, // For formatting earned_at date
   endOfWeek, // <-- NEW: For weekly goal calculation
-  isWithinInterval // <-- NEW: For weekly goal calculation
+  isWithinInterval, // <-- NEW: For weekly goal calculation
+  startOfDay, // <-- Import startOfDay
+  formatDistanceStrict // <-- Import formatDistanceStrict
 } from 'date-fns';
 import { Progress } from "@/components/ui/progress"; // Import Progress component
 import { Target, CalendarClock, Trophy, Sparkles, Award as AwardIcon } from 'lucide-react'; // Icons for new card
@@ -281,6 +283,10 @@ export default function UserDashboard({ user }: UserDashboardProps) {
   // --- Dialog State (Weekly Goal) ---
   const [isGoalDialogOpen, setIsGoalDialogOpen] = useState(false); // <-- NEW: Goal dialog state
   const [isGoalSubmitting, setIsGoalSubmitting] = useState(false); // <-- NEW: Goal submitting state
+
+  // --- State for Viewing Full Notes --- // (NEW)
+  const [isNotesDialogOpen, setIsNotesDialogOpen] = useState(false);
+  const [selectedNote, setSelectedNote] = useState<string | null>(null);
 
   // --- Fetch Data Logic (Updated) ---
   const fetchData = useCallback(async () => {
@@ -724,6 +730,17 @@ export default function UserDashboard({ user }: UserDashboardProps) {
        }
     };
 
+  // --- Handlers for Viewing Notes --- // (NEW)
+  const handleOpenNotesDialog = (note: string) => {
+    setSelectedNote(note);
+    setIsNotesDialogOpen(true);
+  };
+
+  const handleCloseNotesDialog = () => {
+      setSelectedNote(null);
+      setIsNotesDialogOpen(false);
+  };
+
   // --- Calculate Progress Logic --- //
   let progressPercent: number | null = null;
   let currentWeekNumber: number | null = null;
@@ -738,10 +755,10 @@ export default function UserDashboard({ user }: UserDashboardProps) {
     const boundedWeeksPassed = Math.max(0, Math.min(weeksPassed, totalPlanWeeks));
     currentWeekNumber = Math.min(boundedWeeksPassed + 1, totalPlanWeeks);
     progressPercent = (boundedWeeksPassed / totalPlanWeeks) * 100;
-    timeUntilRaceString = formatDistanceToNowStrict(raceDate, { addSuffix: true });
+    timeUntilRaceString = formatDistanceStrict(raceDate, startOfDay(new Date()), { addSuffix: true });
 
   } else if (nextUpcomingRace?.date) {
-     timeUntilRaceString = formatDistanceToNowStrict(parseISO(nextUpcomingRace.date), { addSuffix: true });
+     timeUntilRaceString = formatDistanceStrict(parseISO(nextUpcomingRace.date), startOfDay(new Date()), { addSuffix: true });
   }
 
 
@@ -814,6 +831,22 @@ export default function UserDashboard({ user }: UserDashboardProps) {
                  />
                </DialogContent>
              </Dialog>
+
+            {/* --- View Full Note Dialog (NEW) --- */}
+            <Dialog open={isNotesDialogOpen} onOpenChange={setIsNotesDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Workout Note</DialogTitle>
+                    </DialogHeader>
+                    <div className="prose prose-sm dark:prose-invert max-w-none py-4 whitespace-pre-wrap break-words">
+                        <p>{selectedNote}</p>
+                    </div>
+                    {/* Add a close button for accessibility and clarity */}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={handleCloseNotesDialog}>Close</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold tracking-tight">
@@ -1063,11 +1096,12 @@ export default function UserDashboard({ user }: UserDashboardProps) {
                          ) : recentWorkouts.length > 0 ? (
                            recentWorkouts.map((workout) => (
                              <div key={`recent-workout-${workout.id}`} className="flex items-center justify-between text-sm p-2 hover:bg-muted/50 rounded-md transition-colors">
-                                <div className="flex flex-col flex-grow mr-2">
+                                <div className="flex flex-col flex-grow mr-2 min-w-0">
                                     <span className="font-medium capitalize">
                                         {workout.activity_type}
                                         <span className="text-muted-foreground font-normal text-xs ml-1.5">
-                                            ({formatRelative(parseISO(workout.date), new Date())})
+                                            {/* Compare to start of today for accurate day difference */}
+                                            ({formatDistanceStrict(parseISO(workout.date), startOfDay(new Date()), { addSuffix: true })})
                                         </span>
                                     </span>
                                     <span className="text-muted-foreground text-xs">
@@ -1076,7 +1110,22 @@ export default function UserDashboard({ user }: UserDashboardProps) {
                                         {formatTime(workout.duration_seconds === undefined ? null : workout.duration_seconds)}
                                         {workout.effort_level && ` (Effort: ${workout.effort_level}/5)`}
                                     </span>
-                                    {workout.notes && <p className="text-xs text-foreground/80 italic mt-0.5 truncate">{workout.notes}</p>}
+                                    {workout.notes && (
+                                        <Tooltip delayDuration={150}>
+                                            <TooltipTrigger asChild>
+                                                <div
+                                                    className="flex items-center gap-1 text-xs text-foreground/80 italic mt-0.5 cursor-pointer hover:underline"
+                                                    onClick={() => workout.notes && handleOpenNotesDialog(workout.notes)}
+                                                >
+                                                    <p className="truncate flex-shrink min-w-0">{workout.notes}</p>
+                                                    <MoreHorizontal className="w-3 h-3 flex-shrink-0" />
+                                                </div>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="bottom" align="start" className="max-w-[300px] whitespace-pre-wrap break-words">
+                                                 <p>{workout.notes}</p>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    )}
                                </div>
                                 {/* Optional: Add Edit button if needed later */}
                                  {/* <Button
@@ -1192,7 +1241,8 @@ export default function UserDashboard({ user }: UserDashboardProps) {
                                                     <p className="text-xs text-muted-foreground leading-tight hidden sm:block">{ach.description}</p>
                                                 </div>
                                                  <span className="text-xs text-muted-foreground flex-shrink-0 ml-auto pl-2">
-                                                    {formatRelative(parseISO(ach.earned_at), new Date())}
+                                                    {/* Compare to start of today for accurate day difference */}
+                                                    {formatDistanceStrict(parseISO(ach.earned_at), startOfDay(new Date()), { addSuffix: true })}
                                                 </span>
                                             </div>
                                          </TooltipTrigger>
