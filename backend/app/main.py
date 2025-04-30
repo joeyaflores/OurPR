@@ -8,6 +8,9 @@ from .api import races, user_prs, race_query, user_plans # Add user_plans
 from .api import user_goal
 from .api import recommendations
 from .api import training_plans # <-- Import the new router
+from .api import achievements # <-- Import the new achievements router
+from .api import workouts # <-- Import the new workouts router
+from .api import weekly_goals # <-- NEW: Import the weekly goals router
 
 load_dotenv() # <-- Load environment variables from .env file
 
@@ -57,5 +60,8 @@ app.include_router(user_plans.router, prefix="/api", tags=["User Plan"]) # Add u
 app.include_router(user_goal.router, prefix="/api") # Prefix is already in the router file
 app.include_router(recommendations.router, prefix="/api") # Prefix is already in the router file
 app.include_router(training_plans.router, prefix="/api") # <-- Add prefix="/api"
+app.include_router(achievements.router, prefix="/api") # <-- Add the achievements router
+app.include_router(workouts.router, prefix="/api") # <-- Add the workouts router
+app.include_router(weekly_goals.router, prefix="/api") # <-- NEW: Include the weekly goals router
 
 # Add other routers here later (e.g., auth) 
