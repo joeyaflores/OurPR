@@ -26,23 +26,25 @@ import { toast } from "sonner";
 import { format } from 'date-fns';
 import { motion } from "framer-motion"; // Import motion
 import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
+import { Separator } from "@/components/ui/separator"; // Import Separator
 
-// Types for data - Keep consistent with page.tsx initially
-type PlannedRace = {
-  id: string;
-  races: {
-    id: string;
-    name: string;
-    date: string;
-  } | null;
-};
+// Assuming API returns PlannedRaceDetail similar to plan/page.tsx
+// Define it here or import if centralized
+import type { PlannedRaceDetail } from '@/types/planned_race'; // Assuming this type exists and is correct
+import type { UserPr } from '@/types/user_pr'; // Use the existing UserPr type
 
-type RecentPr = {
-  id: string;
-  distance: string;
-  time_in_seconds: number;
-  date: string;
-};
+// --- Gamification Helper Imports ---
+import {
+  differenceInWeeks,
+  formatDistanceToNowStrict,
+  isFuture,
+  parseISO,
+  compareAsc,
+  startOfWeek,
+  subWeeks,
+} from 'date-fns';
+import { Progress } from "@/components/ui/progress"; // Import Progress component
+import { Target, CalendarClock, Trophy, Sparkles } from 'lucide-react'; // Icons for new card
 
 // Helper function (can be moved to utils later)
 function formatTime(totalSeconds: number | null): string {
@@ -93,16 +95,21 @@ const DashboardSkeleton = () => (
   >
     <Skeleton className="h-8 w-3/4 rounded-md" /> {/* Welcome message */}
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {/* Races Card Skeleton */}
-      <Card>
+      {/* Races Card Skeleton (Updated style for focus card) */}
+      <Card className="bg-gradient-to-br from-primary/10 via-background to-background border-primary/20">
         <CardHeader>
           <Skeleton className="h-6 w-1/2 rounded-md" />
           <Skeleton className="h-4 w-3/4 rounded-md" />
         </CardHeader>
-        <CardContent className="space-y-3 min-h-[100px]">
-          <Skeleton className="h-4 w-full rounded-md" />
-          <Skeleton className="h-4 w-5/6 rounded-md" />
-          <Skeleton className="h-4 w-full rounded-md" />
+        <CardContent className="space-y-4 min-h-[150px]">
+          <Skeleton className="h-6 w-full rounded-md" /> {/* Race Name + Countdown */}
+          <Skeleton className="h-4 w-5/6 rounded-md" /> {/* Date/Location */}
+          <Skeleton className="h-px w-full rounded-full" /> {/* Separator */}
+          <div className="grid grid-cols-2 gap-4">
+             <Skeleton className="h-10 w-full rounded-md" /> {/* Distance */}
+             <Skeleton className="h-10 w-full rounded-md" /> {/* PR */}
+          </div>
+          <Skeleton className="h-6 w-full rounded-md" /> {/* Progress Bar Area */}
         </CardContent>
         <CardFooter>
           <Skeleton className="h-9 w-32 rounded-md" />
@@ -114,7 +121,7 @@ const DashboardSkeleton = () => (
           <Skeleton className="h-6 w-1/2 rounded-md" />
           <Skeleton className="h-4 w-3/4 rounded-md" />
         </CardHeader>
-        <CardContent className="space-y-3 min-h-[100px]">
+        <CardContent className="space-y-3 min-h-[150px]"> {/* Adjusted min-height */}
           <Skeleton className="h-4 w-full rounded-md" />
           <Skeleton className="h-4 w-5/6 rounded-md" />
           <Skeleton className="h-4 w-full rounded-md" />
@@ -128,69 +135,118 @@ const DashboardSkeleton = () => (
   </motion.div>
 );
 
+
 export default function UserDashboard({ user }: UserDashboardProps) {
-  const [plannedRaces, setPlannedRaces] = useState<PlannedRace[]>([]);
-  const [recentPrs, setRecentPrs] = useState<RecentPr[]>([]);
+  // --- State ---
+  const [allPlannedRaces, setAllPlannedRaces] = useState<PlannedRaceDetail[]>([]); // All races from API
+  const [nextUpcomingRace, setNextUpcomingRace] = useState<PlannedRaceDetail | null>(null); // The single next race
+  const [allUserPrs, setAllUserPrs] = useState<UserPr[]>([]); // All user PRs
+  const [recentPrs, setRecentPrs] = useState<UserPr[]>([]); // For the recent PRs card
+  const [relevantPr, setRelevantPr] = useState<UserPr | null>(null); // PR matching the next race distance
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const supabase = createClient();
 
-  // --- Dialog State ---
+  // --- Dialog State (remains the same) ---
   const [isPrDialogOpen, setIsPrDialogOpen] = useState(false);
-  const [editingPr, setEditingPr] = useState<RecentPr | null>(null); // Use RecentPr type here
+  const [editingPr, setEditingPr] = useState<UserPr | null>(null); // Use UserPr type
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- Fetch Data Logic ---
+  // --- Fetch Data Logic (Updated) ---
   const fetchData = useCallback(async () => {
-    console.log("UserDashboard: Fetching data...");
+    console.log("UserDashboard: Fetching data (Enhanced)...");
     setIsLoading(true);
     setFetchError(null);
+    setNextUpcomingRace(null); // Reset derived state
+    setRelevantPr(null);     // Reset derived state
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session || session.user.id !== user.id) {
-          throw new Error("Session mismatch or user not found.");
+        throw new Error("Session mismatch or user not found.");
       }
-       const accessToken = session.access_token; // Needed for API calls
+      const accessToken = session.access_token;
 
-      // Fetch upcoming planned races
-       const { data: racesData, error: racesError } = await supabase
-        .from('user_race_plans')
-        .select('id, races ( id, name, date )')
-        .eq('user_id', user.id)
-        .order('date', { ascending: true, foreignTable: 'races' })
-        .limit(3);
+      // --- Fetch Plan and PRs Concurrently ---
+      const planUrl = `${API_BASE_URL}/api/users/me/plan/`;
+      const headers = { 'Authorization': `Bearer ${accessToken}` };
 
-      if (racesError) throw new Error(`Failed to load planned races: ${racesError.message}`);
-      setPlannedRaces((racesData as unknown as PlannedRace[]) || []);
-
-      // Fetch recent PRs
-      const { data: prsData, error: prsError } = await supabase
+      // Fetch all PRs using Supabase client
+      const prsPromise = supabase
         .from('user_prs')
-        .select('id, distance, time_in_seconds, date')
+        .select('id, user_id, race_id, distance, date, time_in_seconds, created_at, updated_at, is_official, race_name') // Use UserPr fields
         .eq('user_id', user.id)
-        .order('date', { ascending: false })
-        .limit(3);
+        .order('date', { ascending: false }); // Order by date desc
 
-      if (prsError) throw new Error(`Failed to load recent PRs: ${prsError.message}`);
-      setRecentPrs(prsData || []);
+      // Fetch full plan details using API
+      const planPromise = fetch(planUrl, { headers });
+
+      // Await both promises
+      const [prsResponse, planHttpResponse] = await Promise.all([prsPromise, planPromise]);
+
+      // --- Process PRs Response ---
+      if (prsResponse.error) {
+        throw new Error(`Failed to load user PRs: ${prsResponse.error.message}`);
+      }
+      const allFetchedPrs: UserPr[] = prsResponse.data || [];
+      setAllUserPrs(allFetchedPrs);
+      setRecentPrs(allFetchedPrs.slice(0, 3)); // Update recent PRs slice
+
+      // --- Process Plan Response ---
+      let fetchedPlannedRaces: PlannedRaceDetail[] = [];
+      if (!planHttpResponse.ok) {
+        // Handle 404 for plan specifically (no races added yet)
+        if (planHttpResponse.status !== 404) {
+          const planErrorData = await planHttpResponse.json().catch(() => ({ detail: 'Failed to fetch plan data.' }));
+          throw new Error(`Plan Fetch Error: ${planErrorData.detail || planHttpResponse.statusText}`);
+        } else {
+          // 404 is okay, means empty plan
+          setAllPlannedRaces([]); // Set to empty array
+        }
+      } else {
+        fetchedPlannedRaces = await planHttpResponse.json();
+        setAllPlannedRaces(fetchedPlannedRaces);
+      }
+
+      // --- Process and Find Next Race + Relevant PR ---
+      if (fetchedPlannedRaces.length > 0) {
+        const futureRaces = fetchedPlannedRaces
+          .filter(race => race.date && isFuture(parseISO(race.date)))
+          .sort((a, b) => compareAsc(parseISO(a.date), parseISO(b.date))); // Sort ascending by date
+
+        if (futureRaces.length > 0) {
+          const nextRace = futureRaces[0];
+          setNextUpcomingRace(nextRace);
+          console.log("Next upcoming race:", nextRace);
+
+          // Find the relevant PR
+          const matchingPr = allFetchedPrs.find(pr => pr.distance === nextRace.distance);
+          setRelevantPr(matchingPr || null);
+           console.log("Relevant PR for next race:", matchingPr);
+        }
+      }
 
     } catch (error: any) {
       console.error("UserDashboard: Error fetching data:", error);
       setFetchError(error.message || "Failed to load your dashboard data.");
-      setPlannedRaces([]);
+      // Reset states on error
+      setAllPlannedRaces([]);
+      setNextUpcomingRace(null);
+      setAllUserPrs([]);
       setRecentPrs([]);
+      setRelevantPr(null);
     } finally {
       setIsLoading(false);
     }
-  }, [user.id, supabase]);
+  }, [user.id, supabase]); // Dependencies remain the same
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
 
-  // --- Dialog Handlers ---
-   const handleOpenPrDialog = (pr: RecentPr | null = null) => {
+  // --- Dialog Handlers (remain the same) ---
+  const handleOpenPrDialog = (pr: UserPr | null = null) => {
     setEditingPr(pr);
     setIsPrDialogOpen(true);
   };
@@ -219,14 +275,15 @@ export default function UserDashboard({ user }: UserDashboardProps) {
          return;
      }
 
-     // Construct payload - Note: user_id comes from session for security
+     // Construct payload - Use UserPr fields
      const prPayload = {
-       user_id: session.user.id,
+       user_id: session.user.id, // This comes from session
        distance: values.distance,
-       date: format(values.date, 'yyyy-MM-dd'),
+       date: format(values.date, 'yyyy-MM-dd'), // Ensure date is formatted correctly
        time_in_seconds: timeInSeconds,
        is_official: values.is_official,
        race_name: values.race_name || null,
+       // race_id: values.race_id || null, // Include if your form collects this
      };
 
      const url = prId
@@ -234,29 +291,24 @@ export default function UserDashboard({ user }: UserDashboardProps) {
        : `${API_BASE_URL}/api/users/me/prs`;
      const method = prId ? 'PUT' : 'POST';
 
-     // console.log(`Submitting PR from Dashboard (${method}) to ${url}`, method === 'PUT' ? values : prPayload);
-
-     // --- Construct Body ---
+     // --- Construct Body (Adapt based on UserPrUpdate model) ---
      let requestBody;
      if (method === 'PUT') {
-         // Only include fields allowed by UserPrUpdate model
          const putPayload: Record<string, any> = {};
          // Check which fields are present in the form values and add them
-         if (values.distance) putPayload.distance = values.distance;
+         if (values.distance) putPayload.distance = values.distance; // Note: distance might not be updatable typically
          if (values.date) putPayload.date = format(values.date, 'yyyy-MM-dd');
          if (timeInSeconds !== undefined && !isNaN(timeInSeconds)) {
              putPayload.time_in_seconds = timeInSeconds;
          }
-         // Explicitly handle boolean, checking if it's defined in values
          if (values.is_official !== undefined) {
              putPayload.is_official = values.is_official;
          }
-         // Handle race_name, allowing it to be set to null
-         if (values.race_name !== undefined) { // Check if key exists
+         if (values.race_name !== undefined) {
              putPayload.race_name = values.race_name || null;
          }
+        // Add other updatable fields from UserPrUpdate if necessary
 
-         // Prevent sending empty update request
          if (Object.keys(putPayload).length === 0) {
             toast.info("No changes detected to save.");
             setIsSubmitting(false);
@@ -264,7 +316,7 @@ export default function UserDashboard({ user }: UserDashboardProps) {
          }
          requestBody = JSON.stringify(putPayload);
      } else {
-         // POST uses the full prPayload (includes user_id, is_official, race_name)
+         // POST uses the full prPayload
          requestBody = JSON.stringify(prPayload);
      }
 
@@ -275,12 +327,11 @@ export default function UserDashboard({ user }: UserDashboardProps) {
            'Content-Type': 'application/json',
            'Authorization': `Bearer ${session.access_token}`,
          },
-         body: requestBody, // Use the constructed body
+         body: requestBody,
        });
 
        if (!response.ok) {
          const errorData = await response.json();
-         // Remove the complex retry logic as the payload should now be correct
          throw new Error(errorData.detail || `Failed to ${prId ? 'update' : 'create'} PR.`);
        }
 
@@ -296,10 +347,9 @@ export default function UserDashboard({ user }: UserDashboardProps) {
      }
    };
 
-  // --- Delete Handler (Optional for Dashboard) ---
-  // We can reuse handleDeletePr from PRTimeline if needed, passing required props
+  // --- Delete Handler (remain the same) ---
   const handleDeletePr = async (prId: string) => {
-    // Implementation similar to PRTimeline's handleDeletePr
+    // ... (keep existing handleDeletePr logic)
      setIsSubmitting(true);
      const { data: { session } } = await supabase.auth.getSession();
      if (!session) { /* ... error handling ... */ return; }
@@ -325,15 +375,37 @@ export default function UserDashboard({ user }: UserDashboardProps) {
   };
 
 
+  // --- Calculate Progress Logic ---
+  let progressPercent: number | null = null;
+  let currentWeekNumber: number | null = null;
+  let totalPlanWeeks: number | null = null;
+  let timeUntilRaceString: string | null = null;
+
+  if (nextUpcomingRace?.date && nextUpcomingRace.total_weeks && nextUpcomingRace.total_weeks > 0) {
+    const raceDate = parseISO(nextUpcomingRace.date);
+    totalPlanWeeks = nextUpcomingRace.total_weeks;
+    const startDate = startOfWeek(subWeeks(raceDate, totalPlanWeeks), { weekStartsOn: 1 }); // Assuming week starts Monday
+    const weeksPassed = differenceInWeeks(new Date(), startDate, { roundingMethod: 'floor' });
+    const boundedWeeksPassed = Math.max(0, Math.min(weeksPassed, totalPlanWeeks));
+    currentWeekNumber = Math.min(boundedWeeksPassed + 1, totalPlanWeeks);
+    progressPercent = (boundedWeeksPassed / totalPlanWeeks) * 100;
+    // Calculate countdown
+    timeUntilRaceString = formatDistanceToNowStrict(raceDate, { addSuffix: true });
+
+  } else if (nextUpcomingRace?.date) {
+     // Still show countdown even if no plan details
+     timeUntilRaceString = formatDistanceToNowStrict(parseISO(nextUpcomingRace.date), { addSuffix: true });
+  }
+
+
   // --- Render Logic ---
   if (isLoading) {
-    // Render the skeleton component while loading
     return <DashboardSkeleton />;
   }
 
   return (
     <div className="space-y-8 w-full">
-       {/* --- PR Dialog --- */}
+       {/* --- PR Dialog (remains the same) --- */}
         <Dialog open={isPrDialogOpen} onOpenChange={setIsPrDialogOpen}>
             <DialogContent className="sm:max-w-[425px]" onInteractOutside={(e) => { if (isSubmitting) e.preventDefault(); }}>
             <DialogHeader>
@@ -343,10 +415,8 @@ export default function UserDashboard({ user }: UserDashboardProps) {
                 </DialogDescription>
             </DialogHeader>
             <AddEditPrForm
-                // Use RecentPr type for prToEdit, map if needed or adjust form type
                 key={editingPr?.id || 'add-home'}
-                // Pass editingPr directly, as its fields match PrEditData
-                prToEdit={editingPr}
+                prToEdit={editingPr} // Pass UserPr directly
                 onSubmit={handlePrFormSubmit}
                 onCancel={handleClosePrDialog}
                 onDelete={handleDeletePr}
@@ -372,69 +442,121 @@ export default function UserDashboard({ user }: UserDashboardProps) {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Upcoming Races Card */}
-        <Card>
+
+        {/* --- NEW: Next Upcoming Race Focus Card --- */}
+        <Card className="bg-gradient-to-br from-primary/10 via-background to-background border-primary/20">
           <CardHeader>
-            <CardTitle>Upcoming Planned Races</CardTitle>
-            <CardDescription>Your next few races on the calendar.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 min-h-[100px]">
-            {plannedRaces.length > 0 ? (
-              plannedRaces.map((plan) => (
-                plan.races && (
-                  <div key={plan.id} className="flex justify-between items-center text-sm">
-                    <span>{plan.races.name}</span>
-                    <Badge variant="outline">{new Date(plan.races.date + 'T00:00:00').toLocaleDateString()}</Badge>
-                  </div>
-                )
-              ))
+            <CardTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5 text-primary" />
+              Your Next Race Focus
+            </CardTitle>
+            {nextUpcomingRace ? (
+                 <CardDescription>Get ready for the {nextUpcomingRace.name}!</CardDescription>
             ) : (
-              <div className="text-center text-muted-foreground text-sm space-y-2 pt-4">
-                <p>Ready to find your next challenge? 🏁</p>
-                <p>Explore races and add them to your plan!</p>
-              </div>
+                <CardDescription>Plan your next race to unlock training insights.</CardDescription>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-4 min-h-[150px]">
+            {nextUpcomingRace ? (
+              <>
+                <div className="flex justify-between items-center">
+                  <span className="font-medium text-lg">{nextUpcomingRace.name}</span>
+                   {timeUntilRaceString && (
+                        <Badge variant="default" className="text-sm whitespace-nowrap">
+                            <CalendarClock className="w-3.5 h-3.5 mr-1.5" />
+                            {timeUntilRaceString}
+                        </Badge>
+                   )}
+                </div>
+                 <div className="text-sm text-muted-foreground">
+                   {new Date(nextUpcomingRace.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                   {nextUpcomingRace.city && `, ${nextUpcomingRace.city}`}
+                   {nextUpcomingRace.state && `, ${nextUpcomingRace.state}`}
+                 </div>
+
+                <Separator />
+
+                 <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <p className="text-muted-foreground mb-1">Distance</p>
+                        <p className="font-medium">{nextUpcomingRace.distance}</p>
+                    </div>
+                     <div>
+                        <p className="text-muted-foreground mb-1">Your PR ({nextUpcomingRace.distance})</p>
+                        <p className="font-medium flex items-center gap-1.5">
+                           <Trophy className={`w-4 h-4 ${relevantPr ? 'text-amber-500' : 'text-muted-foreground/50'}`} />
+                           {relevantPr ? formatTime(relevantPr.time_in_seconds) : "Not Logged"}
+                         </p>
+                    </div>
+                 </div>
+
+                {/* --- Plan Progress --- */}
+                 {totalPlanWeeks !== null && currentWeekNumber !== null && progressPercent !== null && nextUpcomingRace.has_generated_plan && (
+                   <div className="space-y-2 pt-2">
+                     <div className="flex justify-between items-center text-sm">
+                       <span className="text-muted-foreground">Training Plan Progress</span>
+                       <span className="font-medium">Week {currentWeekNumber} of {totalPlanWeeks}</span>
+                     </div>
+                     <Progress value={progressPercent} aria-label={`Training plan progress ${progressPercent}%`} />
+                   </div>
+                 )}
+                 {totalPlanWeeks !== null && !nextUpcomingRace.has_generated_plan && (
+                    <div className="text-center text-xs text-muted-foreground pt-2 flex items-center justify-center gap-2">
+                         <Sparkles className="w-3.5 h-3.5 text-primary/80" />
+                         Generate a plan on the 'My Plan' page for weekly guidance!
+                     </div>
+                 )}
+
+              </>
+            ) : (
+              <div className="text-center text-muted-foreground text-sm space-y-2 pt-6">
+                 <p>No upcoming races found in your plan.</p>
+                 <p>Add your next goal race to stay focused!</p>
+               </div>
             )}
           </CardContent>
           <CardFooter>
-            <Link href="/discover" passHref>
-              <Button size="sm">Discover More Races</Button>
+            <Link href="/plan" passHref>
+              <Button size="sm" variant="default">
+                  View My Plan
+              </Button>
             </Link>
-            {/* Add Link to 'My Plan' page later */}
           </CardFooter>
         </Card>
 
-        {/* Recent PRs Card */}
+        {/* --- Existing Recent PRs Card (Adjusted) --- */}
         <Card>
           <CardHeader>
             <CardTitle>Recent PRs</CardTitle>
             <CardDescription>Your latest personal records.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 min-h-[100px]">
+          <CardContent className="space-y-3 min-h-[150px]"> {/* Adjusted min-height */}
             {recentPrs.length > 0 ? (
-              recentPrs.map((pr) => (
+              recentPrs.map((pr) => ( // Use recentPrs state (slice of allUserPrs)
                 <div key={pr.id} className="flex justify-between items-center text-sm">
-                  <span>{pr.distance}</span>
-                  <Badge variant="secondary">{formatTime(pr.time_in_seconds)}</Badge>
-                  {/* Optionally add edit button here */}
-                   <Button 
-                      variant="ghost" 
+                  <div className="flex-1 truncate mr-2">
+                     <span className="font-medium">{pr.distance}</span>
+                     {pr.race_name && <span className="text-muted-foreground text-xs ml-1">({pr.race_name})</span>}
+                  </div>
+                  <Badge variant="secondary" className="mx-2 whitespace-nowrap">{formatTime(pr.time_in_seconds)}</Badge>
+                   <Button
+                      variant="ghost"
                       size="sm"
                       className="text-xs h-6 px-1.5 text-muted-foreground"
-                      onClick={() => handleOpenPrDialog(pr)}
+                      onClick={() => handleOpenPrDialog(pr)} // Pass UserPr
                    >
                       Edit
                    </Button>
                 </div>
               ))
             ) : (
-              <div className="text-center text-muted-foreground text-sm space-y-2 pt-4">
+              <div className="text-center text-muted-foreground text-sm space-y-2 pt-6">
                 <p>Log your first Personal Record ⏱️</p>
                 <p>Track your progress and celebrate achievements!</p>
               </div>
             )}
           </CardContent>
           <CardFooter className="flex gap-2 justify-start">
-             {/* Connect this button to the dialog */}
              <Button
                 variant="secondary"
                 size="sm"
@@ -442,8 +564,12 @@ export default function UserDashboard({ user }: UserDashboardProps) {
             >
                 Log New PR
              </Button>
-             {/* Keep View All PRs disabled for now */}
-             <Button variant="outline" size="sm" disabled>View All PRs</Button>
+             {/* TODO: Link to a full PR timeline page */}
+             <Link href="/pr-timeline" passHref>
+                <Button variant="outline" size="sm" /* disabled={allUserPrs.length === 0} */>
+                   View All PRs
+                </Button>
+             </Link>
           </CardFooter>
         </Card>
       </div>
