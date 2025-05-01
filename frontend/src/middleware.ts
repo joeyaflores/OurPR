@@ -47,9 +47,10 @@ export async function middleware(request: NextRequest) {
   // Refresh session if expired - **IMPORTANT!**
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Redirect to login if user is not logged in and not on auth pages
+  // Redirect to login if user is not logged in and not on root, login, or auth pages
   if (
     !user &&
+    request.nextUrl.pathname !== '/' &&
     !request.nextUrl.pathname.startsWith('/login') &&
     !request.nextUrl.pathname.startsWith('/auth') // Assuming /auth/callback is used
   ) {
