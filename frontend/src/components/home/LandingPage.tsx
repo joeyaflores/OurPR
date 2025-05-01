@@ -48,17 +48,29 @@ export function LandingPage() {
     <div className="w-full overflow-x-hidden"> {/* Prevent horizontal scroll from animations */}
       {/* === Hero Section === */}
       <motion.section 
-        className="w-full py-20 md:py-32 lg:py-40 bg-gradient-to-br from-primary/20 via-background to-background text-center px-4"
+        className="relative w-full pt-30 md:pt-42 lg:pt-54 pb-18 md:pb-30 lg:pb-42 text-center px-4 overflow-hidden"
         initial="hidden"
         animate="visible"
         variants={sectionVariants}
       >
-        <div className="container mx-auto max-w-3xl">
-          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl mb-4">
+        <div className="absolute inset-0 z-0"> 
+           <Image 
+             src="/images/running-visual-2.jpg"
+             alt="Runner on a scenic route background"
+             fill
+             style={{ objectFit: 'cover' }}
+             priority
+           />
+           {/* Add gradient overlay */}
+           <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-background to-transparent z-10"></div>
+        </div>
+
+        <div className="relative z-20 container mx-auto max-w-3xl">
+          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl mb-4 text-foreground">
             Beyond Listings: Find Your Perfect Race, Get Your Custom Plan.
           </h1>
           <p className="text-lg text-muted-foreground md:text-xl lg:text-2xl mb-8">
-            Stop scrolling endless race calendars. Our PR uses unique insights to uncover races matched to your potential and instantly generates personalized training plans. Track everything, achieve more.
+            Stop scrolling endless race calendars. OurPR uses unique insights to uncover races matched to your potential and instantly generates personalized training plans. Track everything, achieve more.
           </p>
           <Link href="/login" passHref>
             <Button size="lg" className="text-lg px-8 py-6">Get Started Free</Button>
@@ -75,8 +87,8 @@ export function LandingPage() {
         variants={sectionVariants}
       >
         <div className="container mx-auto max-w-5xl">
-          <h2 className="text-3xl font-bold tracking-tight text-center mb-16 md:mb-24"> 
-            Everything You Need To Reach Your Running Goals
+          <h2 className="text-3xl font-bold tracking-tight text-center mb-8 md:mb-12"> 
+            Everything To Reach Your Running Goals
           </h2>
           <motion.div 
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 md:gap-10"
@@ -178,6 +190,8 @@ export function LandingPage() {
                priority
                sizes="100vw" // Updated sizes for potentially full width
              />
+             {/* Add gradient overlay */}
+             <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background to-transparent z-10"></div>
            </div>
            {/* Removed commented out Image 2 div */}
         </div>
@@ -192,8 +206,8 @@ export function LandingPage() {
         variants={sectionVariants}
       >
          <div className="container mx-auto max-w-4xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight mb-20 md:mb-24"> 
-              Get Started in Minutes
+            <h2 className="text-3xl font-bold tracking-tight mb-12 md:mb-16"> 
+               Get Started in Minutes
             </h2>
             <motion.div 
               className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-12"
@@ -202,17 +216,20 @@ export function LandingPage() {
               whileInView="visible"
               viewport={{ once: true, amount: 0.1 }}
             >
-               <motion.div className="flex flex-col items-center" variants={itemVariants}>
+               {/* Step 1 */}
+               <motion.div className="flex flex-col items-center border border-border/20 rounded-lg p-4 hover:shadow-md transition-shadow duration-200" variants={itemVariants}>
                   <div className="flex items-center justify-center w-16 h-16 rounded-full bg-accent text-accent-foreground font-bold text-2xl mb-4 shadow-md">1</div>
                   <h3 className="text-lg font-semibold mb-1">Sign Up Free</h3>
                   <p className="text-sm text-muted-foreground">Create your account quickly.</p>
                </motion.div>
-               <motion.div className="flex flex-col items-center" variants={itemVariants}>
+               {/* Step 2 */}
+               <motion.div className="flex flex-col items-center border border-border/20 rounded-lg p-4 hover:shadow-md transition-shadow duration-200" variants={itemVariants}>
                   <div className="flex items-center justify-center w-16 h-16 rounded-full bg-accent text-accent-foreground font-bold text-2xl mb-4 shadow-md">2</div>
                   <h3 className="text-lg font-semibold mb-1">Discover & Plan</h3>
                   <p className="text-sm text-muted-foreground">Find your ideal race using smart insights & instantly generate your training plan.</p>
                </motion.div>
-               <motion.div className="flex flex-col items-center" variants={itemVariants}>
+               {/* Step 3 */}
+               <motion.div className="flex flex-col items-center border border-border/20 rounded-lg p-4 hover:shadow-md transition-shadow duration-200" variants={itemVariants}>
                   <div className="flex items-center justify-center w-16 h-16 rounded-full bg-accent text-accent-foreground font-bold text-2xl mb-4 shadow-md">3</div>
                   <h3 className="text-lg font-semibold mb-1">Train & Achieve</h3>
                   <p className="text-sm text-muted-foreground">Follow your plan, track your progress, and smash your next PR.</p>
