@@ -15,6 +15,11 @@ import { Badge } from '@/components/ui/badge'; // For potentially showing race d
 import { User } from '@supabase/supabase-js'; // Import User type
 import UserDashboard from '@/components/home/UserDashboard'; // Import the new component
 import type { Metadata } from 'next'; // Import Metadata type
+// --- Remove lucide-react and framer-motion imports, moved to LandingPage ---
+// import { Activity, Search, Trophy, CalendarClock, Sparkles } from 'lucide-react';
+// import { motion } from 'framer-motion';
+// --- Import the new LandingPage component ---
+import { LandingPage } from '@/components/home/LandingPage';
 
 // Add Metadata Export
 export const metadata: Metadata = {
@@ -73,64 +78,17 @@ export default async function Home() {
   const { data: { user } } = await supabase.auth.getUser();
 
   return (
-    <main className="flex min-h-screen flex-col items-center p-6 md:p-12 lg:p-24 bg-gradient-to-b from-background to-muted/50">
-      <div className="w-full max-w-4xl">
-        {/* --- Conditional Rendering --- */}
+    <main className="flex min-h-screen flex-col items-center">
         {user ? (
-          // Render UserDashboard if logged in, pass user object
+        // --- Logged In View ---
+        // Add padding back for dashboard
+        <div className="w-full max-w-6xl p-6 md:p-12 lg:p-24">
           <UserDashboard user={user} />
-        ) : (
-          /* --- Logged Out View (Keep existing) --- */
-          <div className="flex flex-col items-center text-center">
-             <Card className="w-full max-w-2xl mb-12">
-               <CardHeader>
-                 <CardTitle className="text-4xl font-bold tracking-tight">
-                   🏃‍♂️ OurPR
-                 </CardTitle>
-                 <CardDescription className="text-lg">
-                   AI-Powered Race Discovery & Training Platform
-                 </CardDescription>
-               </CardHeader>
-               <CardContent>
-                 <p className="text-muted-foreground">
-                   Discover races perfectly matched to your goals, plan your season,
-                   track your progress, and connect with fellow runners.
-                   Unlock your potential with OurPR.
-                 </p>
-               </CardContent>
-               <CardFooter className="flex justify-center gap-4">
-                 <Link href="/login" passHref>
-                   <Button>Log In</Button>
-                 </Link>
-                  <Link href="/sign-up" passHref>
-                    <Button variant="outline">Sign Up</Button>
-                  </Link>
-               </CardFooter>
-             </Card>
-             {/* Feature Highlights (Keep existing) */} 
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl">
-                <div className="flex flex-col items-center">
-                   <h3 className="text-xl font-semibold mb-2">AI Race Finder</h3>
-                   <p className="text-muted-foreground text-sm">
-                      Tell us what you're looking for in plain language and let our AI find the perfect race.
-                   </p>
-                </div>
-                <div className="flex flex-col items-center">
-                   <h3 className="text-xl font-semibold mb-2">Season Planning</h3>
-                   <p className="text-muted-foreground text-sm">
-                      Add races to your plan, visualize your schedule, and stay organized.
-                   </p>
-                </div>
-                <div className="flex flex-col items-center">
-                   <h3 className="text-xl font-semibold mb-2">PR Tracking</h3>
-                   <p className="text-muted-foreground text-sm">
-                      Log your personal records and monitor your improvement over time.
-                   </p>
-                </div>
-             </div>
-           </div>
+        </div>
+      ) : (
+        // Render the new LandingPage component for logged-out users
+        <LandingPage />
         )}
-      </div>
     </main>
   );
 }
