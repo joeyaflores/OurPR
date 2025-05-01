@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 // Remove Lucide icons, will be replaced by Lottie
 // import { Activity, Search, Trophy, CalendarClock, Sparkles } from 'lucide-react';
@@ -62,7 +63,6 @@ export function LandingPage() {
           <Link href="/login" passHref>
             <Button size="lg" className="text-lg px-8 py-6">Get Started Free</Button>
           </Link>
-          {/* Optional: Add a subtle visual element later, like an illustration or app screenshot */}
         </div>
       </motion.section>
 
@@ -71,7 +71,7 @@ export function LandingPage() {
         className="w-full py-16 md:py-24 lg:py-32 bg-background px-4"
         initial="hidden"
         whileInView="visible"
-        viewport={{ once: true, amount: 0.1 }} // Trigger animation when 10% is visible
+        viewport={{ once: true, amount: 0.1 }}
         variants={sectionVariants}
       >
         <div className="container mx-auto max-w-5xl">
@@ -80,7 +80,7 @@ export function LandingPage() {
           </h2>
           <motion.div 
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 md:gap-10"
-            variants={{ // Stagger children within the grid
+            variants={{
               visible: { transition: { staggerChildren: 0.1 } }
             }}
             initial="hidden"
@@ -93,7 +93,6 @@ export function LandingPage() {
               variants={itemVariants}
               whileHover={{ scale: 1.03 }}
             >
-              {/* Use animationData prop */}
               <Lottie 
                 animationData={raceDiscoveryAnimation} 
                 loop={true} 
@@ -111,7 +110,6 @@ export function LandingPage() {
                variants={itemVariants}
                whileHover={{ scale: 1.03 }}
              >
-              {/* Use animationData prop */}
               <Lottie 
                 animationData={calendarPlanAnimation} 
                 loop={true} 
@@ -129,7 +127,6 @@ export function LandingPage() {
               variants={itemVariants}
               whileHover={{ scale: 1.03 }}
             >
-              {/* Use animationData prop */}
               <Lottie 
                 animationData={trophyGoalAnimation} 
                 loop={true} 
@@ -147,7 +144,6 @@ export function LandingPage() {
               variants={itemVariants}
               whileHover={{ scale: 1.03 }}
             >
-              {/* Use animationData prop */}
               <Lottie 
                 animationData={runningLogAnimation}
                 loop={true} 
@@ -159,6 +155,31 @@ export function LandingPage() {
               </p>
             </motion.div>
           </motion.div>
+        </div>
+      </motion.section>
+
+      {/* === Visual Section (Single Centered Image) === */}
+      <motion.section
+        className="w-full py-6 md:py-10 lg:py-14 bg-background px-4"
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.1 }}
+        variants={sectionVariants}
+      >
+        <div className="container mx-auto max-w-5xl"> 
+           {/* Removed grid layout - image container now direct child */}
+           {/* Image 1 */} 
+           <div className="relative w-full h-64 md:h-80 lg:h-96 rounded-lg overflow-hidden shadow-lg"> 
+             <Image
+               src="/images/running-visual-1.jpg" // Your first image
+               alt="Runner focused on their goal"
+               fill
+               style={{ objectFit: 'cover' }}
+               priority
+               sizes="100vw" // Updated sizes for potentially full width
+             />
+           </div>
+           {/* Removed commented out Image 2 div */}
         </div>
       </motion.section>
 
@@ -175,7 +196,7 @@ export function LandingPage() {
               Get Started in Minutes
             </h2>
             <motion.div 
-              className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-12" /* Increased gap */
+              className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-12"
               variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
               initial="hidden"
               whileInView="visible"
@@ -212,11 +233,11 @@ export function LandingPage() {
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl mb-6">
             Ready for Your Best Race Season Yet?
           </h2>
-          <p className="text-lg text-muted-foreground mb-8">
+          <p className="text-lg text-muted-foreground md:text-xl mb-8">
             Get started with intelligent race discovery and personalized plans designed to help you reach your potential.
           </p>
           <Link href="/login" passHref>
-            <Button size="lg" className="text-lg px-8 py-6">Sign Up Free Today</Button>
+            <Button size="lg" className="text-lg px-8 py-6">Sign Up Free Today</Button> 
           </Link>
         </div>
       </motion.section>
