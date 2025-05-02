@@ -11,7 +11,7 @@ import { RaceResults } from "@/components/discover/RaceResults";
 import { ClientMapWrapper } from "@/components/discover/ClientMapWrapper";
 import { Race } from "@/types/race";
 import { DateRange } from "react-day-picker";
-import { format } from 'date-fns'; // Keep format for date query params
+import { format, addMonths, startOfToday } from 'date-fns'; // Keep format, import addMonths and startOfToday
 import { useDebounce } from "@/hooks/useDebounce";
 import { PRTimeline } from "@/components/discover/PRTimeline";
 import { createClient } from "@/lib/supabase/client"; // <<< Import Supabase client
@@ -20,6 +20,8 @@ import { SlidersHorizontal } from "lucide-react"; // <<< Import Icon
 
 // REMOVE MOCK DATA
 // const MOCK_RACES: Race[] = [ ... ];
+
+const RACES_PER_PAGE = 20; // <<< Define page size constant
 
 // Keep unique distances definition, but it might be empty initially or need updating
 // TODO: Populate distances from API or use a predefined list
@@ -45,16 +47,23 @@ export default function DiscoverPage() {
   // New State for Fetched Data
   const [races, setRaces] = useState<Race[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isFetchingMore, setIsFetchingMore] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [hasMoreRaces, setHasMoreRaces] = useState<boolean>(true);
 
   // --- Data Fetching Functions ---
 
-  // Renamed: Fetches races based on sidebar filters
-  const fetchFilteredRaces = useCallback(async () => {
-    setIsLoading(true);
+  // Renamed: Fetches races based on sidebar filters, now accepts page number
+  const fetchFilteredRaces = useCallback(async (page: number = 1) => {
+    if (page > 1) {
+      setIsFetchingMore(true);
+    } else {
+      setIsLoading(true);
+      setHasMoreRaces(true);
+    }
     setError(null);
     
-    // <<< Get Supabase client and token >>>
     const supabase = createClient();
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
@@ -62,43 +71,52 @@ export default function DiscoverPage() {
     if (!token) {
         setError("User not authenticated. Please log in.");
         setIsLoading(false);
-        setRaces([]); // Clear races if not authenticated
-        return; // Stop fetching if no token
+        setIsFetchingMore(false);
+        setRaces([]);
+        return;
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'; 
     const url = new URL('/api/races', baseUrl);
     const params = new URLSearchParams();
 
-    // Append query parameters based on filters
+    if (debouncedDateRange === undefined) {
+      const today = startOfToday();
+      const sixMonthsLater = addMonths(today, 6);
+      params.append('start_date', format(today, 'yyyy-MM-dd'));
+      params.append('end_date', format(sixMonthsLater, 'yyyy-MM-dd'));
+      console.log("Applying default date range (next 6 months)");
+    } else {
+      if (debouncedDateRange?.from) {
+        params.append('start_date', format(debouncedDateRange.from, 'yyyy-MM-dd'));
+      }
+      if (debouncedDateRange?.to) {
+        params.append('end_date', format(debouncedDateRange.to, 'yyyy-MM-dd'));
+      }
+    }
+
     if (selectedDistance !== "all") {
       params.append('distance', selectedDistance);
     }
     if (showFlatOnly) {
       params.append('flat_only', 'true');
     }
-    if (debouncedDateRange?.from) {
-      params.append('start_date', format(debouncedDateRange.from, 'yyyy-MM-dd'));
-    }
-    if (debouncedDateRange?.to) {
-      params.append('end_date', format(debouncedDateRange.to, 'yyyy-MM-dd'));
-    }
-    // TODO: Add trending/popular/pagination params later
+
+    const skip = (page - 1) * RACES_PER_PAGE;
+    params.append('limit', String(RACES_PER_PAGE));
+    params.append('skip', String(skip));
 
     url.search = params.toString();
-    console.log("Fetching filtered races from:", url.toString());
+    console.log(`Fetching filtered races (Page ${page}) from:`, url.toString());
 
     try {
-      // <<< Add headers to fetch options >>>
       const response = await fetch(url.toString(), {
         headers: {
           'Authorization': `Bearer ${token}`,
-          // Add other headers like Content-Type if needed, though GET usually doesn't need it
         }
       });
       
       if (!response.ok) {
-        // Handle specific auth error vs other errors
         if (response.status === 401) {
              throw new Error("Authentication failed. Please log in again.");
         }
@@ -106,23 +124,34 @@ export default function DiscoverPage() {
         throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
       }
       const data: Race[] = await response.json();
-      setRaces(data);
+
+      setRaces(prevRaces => (page === 1 ? data : [...prevRaces, ...data]));
+      setHasMoreRaces(data.length === RACES_PER_PAGE);
+
     } catch (e: any) {
       console.error("Failed to fetch filtered races:", e);
       setError(e.message || "Failed to fetch filtered races.");
-      setRaces([]);
+      if (page === 1) {
+          setRaces([]);
+      }
+      setHasMoreRaces(false);
     } finally {
-      setIsLoading(false);
+      if (page > 1) {
+        setIsFetchingMore(false);
+      } else {
+        setIsLoading(false);
+      }
     }
-  // Include token in dependencies? No, getSession should handle it.
-  }, [selectedDistance, showFlatOnly, debouncedDateRange]); 
+  }, [selectedDistance, showFlatOnly, debouncedDateRange]);
 
   // New: Fetches races based on AI search query
   const fetchAiRaces = useCallback(async (query: string) => {
     setIsLoading(true);
+    setIsFetchingMore(false);
     setError(null);
+    setCurrentPage(1);
+    setHasMoreRaces(false);
 
-    // <<< Get Supabase client and token >>>
     const supabase = createClient();
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
@@ -130,12 +159,11 @@ export default function DiscoverPage() {
     if (!token) {
         setError("User not authenticated to perform AI search. Please log in.");
         setIsLoading(false);
-        setRaces([]); // Clear races if not authenticated
-        return; // Stop fetching if no token
+        setRaces([]);
+        return;
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
-    // Ensure the correct endpoint path
     const url = new URL('/api/race-query/ai', baseUrl); 
     console.log(`Fetching AI races for query: \"${query}\" from: ${url.toString()}`);
 
@@ -144,13 +172,12 @@ export default function DiscoverPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // <<< Add Authorization header >>>
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({ query: query })
       });
 
       if (!response.ok) {
-        // Handle specific auth error vs other errors
         if (response.status === 401) {
              throw new Error("Authentication failed. Please log in again.");
         }
@@ -166,7 +193,7 @@ export default function DiscoverPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []); // No external state dependencies needed inside, only the query argument
+  }, []);
 
   // --- Effect for Combined Fetching Logic ---
   useEffect(() => {
@@ -174,28 +201,38 @@ export default function DiscoverPage() {
       console.log("Effect: Debounced search query detected, fetching AI races.");
       fetchAiRaces(debouncedSearchQuery);
     } else {
-      console.log("Effect: No search query, fetching filtered races.");
-      fetchFilteredRaces();
+      console.log("Effect: No search query, fetching filtered races (Page 1).");
+      setCurrentPage(1);
+      fetchFilteredRaces(1);
     }
-  }, [debouncedSearchQuery, fetchFilteredRaces, fetchAiRaces]); // Re-run when query or fetch functions change
+  }, [debouncedSearchQuery, selectedDistance, showFlatOnly, debouncedDateRange, fetchAiRaces, fetchFilteredRaces]);
+
+  // <<< Handler to load the next page of races >>>
+  const loadMoreRaces = () => {
+      if (isLoading || isFetchingMore || !hasMoreRaces) {
+          console.log("Load More: Aborted (loading, fetching more, or no more races)");
+          return;
+      }
+      const nextPage = currentPage + 1;
+      console.log(`Load More: Fetching page ${nextPage}`);
+      setCurrentPage(nextPage);
+      fetchFilteredRaces(nextPage);
+  };
 
   // Handlers
   const handleRaceSelect = (id: string | number | null) => {
     setSelectedRaceId(id);
   };
 
-  // This handler now just updates the raw search query state
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(event.target.value);
   };
   
-  // New handler to wrap date range setting and log the value
   const handleDateRangeChange = (range: DateRange | undefined) => {
-    console.log("Calendar onSelect triggered with range:", range); // <-- Log the range
-    setSelectedDateRange(range); // Call the original state setter
+    console.log("Calendar onSelect triggered with range:", range);
+    setSelectedDateRange(range);
   };
 
-  // <<< Handler to toggle filter sidebar >>>
   const toggleFilters = () => setIsFiltersOpen(!isFiltersOpen);
 
   return (
@@ -204,13 +241,11 @@ export default function DiscoverPage() {
         Discover Your Next PR
       </h1>
 
-      {/* 1. Chat Search Input */}
       <ChatSearchInput
         value={searchQuery}
         onChange={handleSearchChange}
       />
 
-      {/* Filter Toggle Button - Mobile Only */}
       <div className="w-full max-w-7xl mx-auto mt-4 flex justify-end lg:hidden">
         <Button variant="outline" onClick={toggleFilters}>
           <SlidersHorizontal className="mr-2 h-4 w-4" />
@@ -218,22 +253,17 @@ export default function DiscoverPage() {
         </Button>
       </div>
 
-      {/* <<< Main Content Layout: Reordered for mobile-first view >>> */}
       <div className="flex flex-col lg:flex-row w-full max-w-7xl mx-auto gap-6 mt-2 lg:mt-6">
         
-        {/* <<< Filters Sidebar: Conditionally rendered on mobile, always shown on lg+ >>> */}
-        {/* Hidden on mobile unless isFiltersOpen is true, always visible block on lg */}
         <div className={`${isFiltersOpen ? 'block' : 'hidden'} lg:block lg:w-[300px] xl:w-[350px]`}> 
           <FilterSidebar
-            // Use predefined or fetched distances
             distances={uniqueDistances}
             selectedDistance={selectedDistance}
             onDistanceChange={setSelectedDistance}
             showFlatOnly={showFlatOnly}
             onFlatnessChange={setShowFlatOnly}
             selectedDateRange={selectedDateRange}
-            onDateRangeChange={handleDateRangeChange} // <-- Pass the new handler
-            // Keep placeholder filters, they don't affect fetchRaces yet
+            onDateRangeChange={handleDateRangeChange}
             showTrending={showTrending}
             onTrendingChange={setShowTrending}
             showPopular={showPopular}
@@ -241,36 +271,30 @@ export default function DiscoverPage() {
           />
         </div>
 
-        {/* <<< Map and Results Container >>> */}
         <div className="flex-1 flex flex-col gap-6">
-           {/* 2. Map View - Adjusted height for mobile */}
            <ClientMapWrapper
-             className="min-h-[300px] h-[40vh] lg:h-auto lg:aspect-video relative" // <<< Adjusted height
-             // Pass fetched races instead of filtered mock races
+             className="min-h-[300px] h-[40vh] lg:h-auto lg:aspect-video relative"
              races={races} 
-             isLoading={isLoading} // Pass loading state
-             error={error} // Pass error state
+             isLoading={isLoading}
+             error={error}
              hoveredRaceId={hoveredRaceId}
              selectedRaceId={selectedRaceId}
              onRaceSelect={handleRaceSelect}
            />
 
-           {/* 4. Race Results */}
            <RaceResults
-             // Pass fetched races instead of filtered mock races
              races={races}
-             isLoading={isLoading} // Pass loading state
-             error={error} // Pass error state
+             isLoading={isLoading}
+             isFetchingMore={isFetchingMore}
+             error={error}
              onRaceHover={setHoveredRaceId}
              onRaceSelect={handleRaceSelect}
              selectedRaceId={selectedRaceId}
+             loadMoreRaces={loadMoreRaces}
+             hasMoreRaces={hasMoreRaces}
            />
         </div>
       </div>
-
-      {/* 5. Your PR Timeline - Temporarily hidden for mobile UX improvement */}
-      {/* TODO: Conditionally render based on user having PR data */}
-      {/* <PRTimeline /> */}
 
     </main>
   );

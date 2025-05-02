@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Race } from "@/types/race"; // Import Race type
 import { Badge } from "@/components/ui/badge"; // Import Badge
-import { Sparkles, Users, Zap, Group, PlusCircle, CheckCircle, AlertCircle, Trash2, Mountain } from "lucide-react"; // Import icons and Mountain icon
+import { Sparkles, Users, Zap, Group, PlusCircle, CheckCircle, AlertCircle, Trash2, Mountain, Loader2 } from "lucide-react"; // Import icons and Mountain icon
 import { Button } from "@/components/ui/button"; // Import Button
 import { cn } from "@/lib/utils"; // Import cn for conditional classes
 import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton for loading state
@@ -25,8 +25,11 @@ interface RaceResultsProps {
   onRaceHover: (id: string | number | null) => void; // Add hover callback prop
   onRaceSelect: (id: string | number | null) => void; // Add select callback prop
   selectedRaceId: string | number | null; // Add selected ID prop
-  isLoading: boolean; // Add loading state prop
+  isLoading: boolean; // Loading state for initial load (page 1)
+  isFetchingMore?: boolean; // Optional: Loading state for subsequent pages
   error: string | null; // Add error state prop
+  loadMoreRaces?: () => void; // Optional: Function to load next page
+  hasMoreRaces?: boolean; // Optional: Flag indicating if more pages might exist
 }
 
 // Action States for the button
@@ -65,7 +68,10 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
   onRaceSelect, 
   selectedRaceId, 
   isLoading, 
-  error 
+  isFetchingMore,
+  error, 
+  loadMoreRaces,
+  hasMoreRaces
 }) => {
   const supabase = createClient();
   const [user, setUser] = useState<User | null>(null);
@@ -472,8 +478,34 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
               );
             })}
           </motion.div>
+
+          {/* <<< Load More Button Section >>> */}
+          <div className="mt-8 text-center">
+            {hasMoreRaces ? (
+              <Button
+                variant="outline"
+                onClick={loadMoreRaces}
+                disabled={isFetchingMore} // Disable button while loading more
+              >
+                {isFetchingMore ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading...</>
+                ) : (
+                  "Load More Races"
+                )}
+              </Button>
+            ) : (
+              // Optional: Show a message when all races are loaded
+              races.length > RACES_PER_PAGE && (
+                 <p className="text-sm text-muted-foreground">You've reached the end!</p>
+               )
+            )}
+          </div>
         </>
       )}
     </section>
   );
 }; 
+
+// Need to define RACES_PER_PAGE here or import it if defined elsewhere
+// Assuming it's the same constant used in discover/page.tsx
+const RACES_PER_PAGE = 20; 
