@@ -163,6 +163,10 @@ interface MapViewProps {
   error: string | null;
 }
 
+// <<< Define Default Map View Constants >>>
+const DEFAULT_CENTER: L.LatLngTuple = [39.8283, -98.5795]; // Center of US
+const DEFAULT_ZOOM = 4;
+
 // Internal component to handle map interactions that require the map instance
 const MapInteractionHandler: React.FC<{ selectedRaceId: string | number | null, races: Race[] }> = ({ selectedRaceId, races }) => {
   const map = useMap(); // This is valid here, inside MapContainer context
@@ -190,6 +194,33 @@ const MapInteractionHandler: React.FC<{ selectedRaceId: string | number | null, 
     }
   }, [selectedRaceId, map, races]);
 
+  // <<< Effect to fit map bounds to race results >>>
+  useEffect(() => {
+    if (!map) return; // Exit if map is not initialized
+
+    const racesWithCoords = races.filter(race => race.lat != null && race.lng != null);
+
+    if (racesWithCoords.length > 0) {
+      // Create LatLng objects for Leaflet bounds calculation
+      const latLngs = racesWithCoords.map(race => L.latLng(race.lat!, race.lng!));
+      
+      // Calculate bounds
+      const bounds = L.latLngBounds(latLngs);
+
+      // Fit map to bounds with padding
+      // Use flyToBounds for smoother animation, or fitBounds for instant jump
+      map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 14 }); // Add padding and limit max zoom
+      
+    } else {
+      // Optional: Reset view if there are no races
+      // map.setView(DEFAULT_CENTER, DEFAULT_ZOOM); 
+      // Let's not reset for now, maybe user zoomed/panned intentionally
+    }
+
+  // Rerun ONLY when the races array reference changes (or map initializes)
+  // Avoid re-running on every render or if selectedRaceId changes.
+  }, [races, map]);
+
   return null; // This component doesn't render anything itself
 };
 
@@ -211,7 +242,7 @@ export const MapView: React.FC<MapViewProps> = ({ className, races, hoveredRaceI
     ? [firstRaceWithCoords.lat!, firstRaceWithCoords.lng!] // Use non-null assertion as we checked
     : [39.8283, -98.5795]; // Fallback center
 
-  const defaultZoom = firstRaceWithCoords ? 9 : 4; // Zoom in closer if we have races with coords
+  const defaultZoom = firstRaceWithCoords ? 9 : DEFAULT_ZOOM; // Use constant
 
   // Conditionally render MapContainer only on the client
   if (!isClient) { // <-- Add conditional check
