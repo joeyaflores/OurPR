@@ -9,7 +9,7 @@ import type { PlannedRaceDetail } from '@/types/planned_race'; // <-- Import the
 import type { UserPr } from '@/types/user_pr'; // <-- Import UserPr type
 import type { TrainingPlanOutline } from '@/types/training_plan'; // <-- Import TrainingPlanOutline type
 import { Skeleton } from "@/components/ui/skeleton"; // For loading state
-import { AlertCircle, Loader2, Save } from 'lucide-react'; // For error state & Save icon
+import { AlertCircle, Loader2, Save, Info } from 'lucide-react'; // For error state & Save icon
 import {
     Dialog,
     DialogContent,
@@ -423,6 +423,13 @@ export default function MyPlanPage() {
         <div className="container mx-auto p-4 md:p-6">
             <h1 className="text-2xl font-bold mb-6">My Training Plan</h1>
 
+            {/* --- Add PR Logging Tip --- */}
+            <div className="mb-6 p-3 border rounded-md bg-blue-50 border-blue-200 text-blue-800 text-sm flex items-start">
+                <Info className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+                <span>Tip: Log your PRs on the Home page for a more personalized plan!</span>
+            </div>
+            {/* --- End PR Logging Tip --- */}
+
             {/* Loading State */}
             {isLoading && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
@@ -517,11 +524,17 @@ export default function MyPlanPage() {
                         )}
 
                         {currentPlanOutline && !planGenerationError && (
-                            // Find the selected race to pass its date
+                            // Find the selected race to pass its date and PR
                             (() => {
                                 const selectedRace = racesWithDetails.find(r => r.id === selectedRaceIdForPlan);
                                 if (selectedRace?.date) {
-                                    return <TrainingPlanDisplay plan={currentPlanOutline} raceDate={selectedRace.date} />;
+                                    return (
+                                        <TrainingPlanDisplay 
+                                            plan={currentPlanOutline} 
+                                            raceDate={selectedRace.date} 
+                                            userPrString={selectedRace.userPr} // <-- Pass the PR string
+                                        />
+                                    );
                                 }
                                 // Handle case where race or date isn't found (should not happen if plan exists)
                                 return <p className="text-destructive text-center">Error: Could not find race date for this plan.</p>; 
