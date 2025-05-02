@@ -15,6 +15,8 @@ import { format } from 'date-fns'; // Keep format for date query params
 import { useDebounce } from "@/hooks/useDebounce";
 import { PRTimeline } from "@/components/discover/PRTimeline";
 import { createClient } from "@/lib/supabase/client"; // <<< Import Supabase client
+import { Button } from "@/components/ui/button"; // <<< Import Button
+import { SlidersHorizontal } from "lucide-react"; // <<< Import Icon
 
 // REMOVE MOCK DATA
 // const MOCK_RACES: Race[] = [ ... ];
@@ -36,6 +38,9 @@ export default function DiscoverPage() {
   const debouncedDateRange = useDebounce(selectedDateRange, 500);
   const [showTrending, setShowTrending] = useState<boolean>(false);
   const [showPopular, setShowPopular] = useState<boolean>(false);
+
+  // <<< State for filter sidebar visibility on mobile >>>
+  const [isFiltersOpen, setIsFiltersOpen] = useState<boolean>(false);
 
   // New State for Fetched Data
   const [races, setRaces] = useState<Race[]>([]);
@@ -132,7 +137,7 @@ export default function DiscoverPage() {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
     // Ensure the correct endpoint path
     const url = new URL('/api/race-query/ai', baseUrl); 
-    console.log(`Fetching AI races for query: "${query}" from: ${url.toString()}`);
+    console.log(`Fetching AI races for query: \"${query}\" from: ${url.toString()}`);
 
     try {
       const response = await fetch(url.toString(), {
@@ -190,6 +195,9 @@ export default function DiscoverPage() {
     setSelectedDateRange(range); // Call the original state setter
   };
 
+  // <<< Handler to toggle filter sidebar >>>
+  const toggleFilters = () => setIsFiltersOpen(!isFiltersOpen);
+
   return (
     <main className="flex flex-col items-center min-h-screen py-8 px-4 md:px-6 lg:px-8">
       <h1 className="text-3xl font-bold tracking-tight mb-4 text-center">
@@ -202,28 +210,42 @@ export default function DiscoverPage() {
         onChange={handleSearchChange}
       />
 
-      <div className="flex flex-col lg:flex-row w-full max-w-7xl mx-auto gap-6 mt-6">
-        {/* 3. Smart Filters Sidebar */}
-        <FilterSidebar
-          // Use predefined or fetched distances
-          distances={uniqueDistances}
-          selectedDistance={selectedDistance}
-          onDistanceChange={setSelectedDistance}
-          showFlatOnly={showFlatOnly}
-          onFlatnessChange={setShowFlatOnly}
-          selectedDateRange={selectedDateRange}
-          onDateRangeChange={handleDateRangeChange} // <-- Pass the new handler
-          // Keep placeholder filters, they don't affect fetchRaces yet
-          showTrending={showTrending}
-          onTrendingChange={setShowTrending}
-          showPopular={showPopular}
-          onPopularChange={setShowPopular}
-        />
+      {/* Filter Toggle Button - Mobile Only */}
+      <div className="w-full max-w-7xl mx-auto mt-4 flex justify-end lg:hidden">
+        <Button variant="outline" onClick={toggleFilters}>
+          <SlidersHorizontal className="mr-2 h-4 w-4" />
+          {isFiltersOpen ? "Hide Filters" : "Show Filters"}
+        </Button>
+      </div>
 
+      {/* <<< Main Content Layout: Reordered for mobile-first view >>> */}
+      <div className="flex flex-col lg:flex-row w-full max-w-7xl mx-auto gap-6 mt-2 lg:mt-6">
+        
+        {/* <<< Filters Sidebar: Conditionally rendered on mobile, always shown on lg+ >>> */}
+        {/* Hidden on mobile unless isFiltersOpen is true, always visible block on lg */}
+        <div className={`${isFiltersOpen ? 'block' : 'hidden'} lg:block lg:w-[300px] xl:w-[350px]`}> 
+          <FilterSidebar
+            // Use predefined or fetched distances
+            distances={uniqueDistances}
+            selectedDistance={selectedDistance}
+            onDistanceChange={setSelectedDistance}
+            showFlatOnly={showFlatOnly}
+            onFlatnessChange={setShowFlatOnly}
+            selectedDateRange={selectedDateRange}
+            onDateRangeChange={handleDateRangeChange} // <-- Pass the new handler
+            // Keep placeholder filters, they don't affect fetchRaces yet
+            showTrending={showTrending}
+            onTrendingChange={setShowTrending}
+            showPopular={showPopular}
+            onPopularChange={setShowPopular}
+          />
+        </div>
+
+        {/* <<< Map and Results Container >>> */}
         <div className="flex-1 flex flex-col gap-6">
-           {/* 2. Map View - Pass fetched races and loading/error state */}
+           {/* 2. Map View - Adjusted height for mobile */}
            <ClientMapWrapper
-             className="min-h-[300px] h-[60vh] lg:h-auto lg:aspect-video relative"
+             className="min-h-[300px] h-[40vh] lg:h-auto lg:aspect-video relative" // <<< Adjusted height
              // Pass fetched races instead of filtered mock races
              races={races} 
              isLoading={isLoading} // Pass loading state
@@ -233,7 +255,7 @@ export default function DiscoverPage() {
              onRaceSelect={handleRaceSelect}
            />
 
-           {/* 4. Race Results - Pass fetched races and loading/error state */}
+           {/* 4. Race Results */}
            <RaceResults
              // Pass fetched races instead of filtered mock races
              races={races}
@@ -246,9 +268,9 @@ export default function DiscoverPage() {
         </div>
       </div>
 
-      {/* 5. Your PR Timeline */}
-      {/* TODO: Implement data fetching for PRTimeline (Priority 3) */}
-      <PRTimeline />
+      {/* 5. Your PR Timeline - Temporarily hidden for mobile UX improvement */}
+      {/* TODO: Conditionally render based on user having PR data */}
+      {/* <PRTimeline /> */}
 
     </main>
   );

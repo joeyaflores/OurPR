@@ -240,240 +240,239 @@ export const RaceResults: React.FC<RaceResultsProps> = ({
   );
 
   return (
-    <section className="mt-6">
-      <h2 className="text-2xl font-semibold mb-4 text-center">
-        {/* Update title based on loading/error state */}
-        {isLoading ? 'Loading Races...' : error ? 'Error' : races.length > 0 ? `${races.length} Races Found` : 'No Races Found'}
-      </h2>
+    <section className="mt-6 w-full">
+      {/* Conditional Rendering based on loading, error, and data */}
 
-      {/* Handle Loading State */}
-      {isLoading && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 justify-items-center">
-          {/* Show multiple skeletons */} 
-          {[...Array(3)].map((_, index) => <RaceCardSkeleton key={index} />)}
+      {isLoading ? (
+        // --- Loading State --- 
+        <>
+          <h2 className="text-2xl font-semibold mb-4 text-center text-gray-500">Loading Races...</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <RaceCardSkeleton />
+            <RaceCardSkeleton />
+            <RaceCardSkeleton />
+          </div>
+        </>
+      ) : error ? (
+        // --- Error State --- 
+        <div className="text-center py-10 px-4">
+          <AlertCircle className="mx-auto h-12 w-12 text-red-400" />
+          <h2 className="mt-2 text-xl font-semibold text-red-600">Error Loading Races</h2>
+          <p className="mt-1 text-sm text-gray-600">{error}</p>
+          {/* Optional: Add a retry button here */}
         </div>
-      )}
+      ) : races.length === 0 ? (
+        // --- No Results State --- 
+        <div className="text-center py-10 px-4">
+          <Zap className="mx-auto h-12 w-12 text-gray-400" /> { /* Or another relevant icon */ }
+          <h2 className="mt-2 text-xl font-semibold text-gray-700">No Races Found</h2>
+          <p className="mt-1 text-sm text-gray-500">Try adjusting your filters or search query.</p>
+        </div>
+      ) : (
+        // --- Results Found State --- 
+        <>
+          <h2 className="text-2xl font-semibold mb-4 text-center">
+             {`${races.length} Race${races.length !== 1 ? 's' : ''} Found`}
+          </h2>
+          <motion.div 
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+          >
+            {races.map((race) => {
+              const isSelected = race.id === selectedRaceId;
+              const currentState = buttonStates[race.id] || 'idle';
+              const isInPlan = plannedRaceIds.has(race.id);
+              // Disable button if race list is loading, user is loading, plan is loading, or action is in progress/success
+              const isButtonDisabled = isLoading || isUserLoading || isPlanLoading || currentState === 'loading' || currentState === 'success';
+              const buttonAction = isInPlan ? () => handleRemoveRaceFromPlan(race.id) : () => handleAddRaceToPlan(race.id);
+              const buttonText = isInPlan ? "Remove from Plan" : "Add to Plan";
+              const ButtonIcon = isInPlan ? Trash2 : PlusCircle;
 
-      {/* Handle Error State */}
-      {!isLoading && error && (
-        <p className="text-destructive col-span-full text-center py-10">
-          Error loading races: {error}
-        </p>
-      )}
+              // Function to get the appropriate placeholder image
+              const getPlaceholderImage = (distance: Race['distance']): string => {
+                switch (distance) {
+                  case '5K':
+                  case '10K':
+                    return '/images/generic-track.jpeg'; // Replace with your actual path
+                  case 'Half Marathon':
+                  case 'Marathon':
+                    return '/images/generic-road.jpeg'; // Replace with your actual path
+                  case '50K':
+                  case '50 Miles':
+                  case '100K':
+                  case '100 Miles':
+                    return '/images/generic-trail.jpeg'; // Replace with your actual path
+                  default:
+                    return '/images/generic-default.jpeg'; // A default fallback
+                }
+              };
 
-      {/* Handle No Results State (only if not loading and no error) */}
-      {!isLoading && !error && races.length === 0 && (
-        <p className="text-muted-foreground col-span-full text-center py-10">
-          No races match your criteria.
-        </p>
-      )}
-
-      {/* Display Results (only if not loading, no error, and races exist) */}
-      {!isLoading && !error && races.length > 0 && (
-        <motion.div // <-- Wrap grid with motion.div
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 justify-items-center"
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-        >
-          {races.map((race) => {
-            // Log the individual race object here
-            // console.log("Rendering Race Card for:", JSON.stringify(race, null, 2)); 
-            
-            const isSelected = race.id === selectedRaceId;
-            const currentButtonState = buttonStates[race.id] || 'idle';
-            const isInPlan = plannedRaceIds.has(race.id);
-            // Disable button if race list is loading, user is loading, plan is loading, or action is in progress/success
-            const isButtonDisabled = isLoading || isUserLoading || isPlanLoading || currentButtonState === 'loading' || currentButtonState === 'success';
-            const buttonAction = isInPlan ? () => handleRemoveRaceFromPlan(race.id) : () => handleAddRaceToPlan(race.id);
-            const buttonText = isInPlan ? "Remove from Plan" : "Add to Plan";
-            const ButtonIcon = isInPlan ? Trash2 : PlusCircle;
-
-            // Function to get the appropriate placeholder image
-            const getPlaceholderImage = (distance: Race['distance']): string => {
-              switch (distance) {
-                case '5K':
-                case '10K':
-                  return '/images/generic-track.jpeg'; // Replace with your actual path
-                case 'Half Marathon':
-                case 'Marathon':
-                  return '/images/generic-road.jpeg'; // Replace with your actual path
-                case '50K':
-                case '50 Miles':
-                case '100K':
-                case '100 Miles':
-                  return '/images/generic-trail.jpeg'; // Replace with your actual path
-                default:
-                  return '/images/generic-default.jpeg'; // A default fallback
-              }
-            };
-
-            return (
-              <motion.div // <-- Wrap each card container with motion.div
-                key={race.id}
-                variants={itemVariants}
-                className={cn(
-                  "w-full max-w-sm cursor-pointer transition-all duration-200",
-                  isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "ring-0"
-                )}
-                 // Move event handlers to the motion div
-                onMouseEnter={() => onRaceHover(race.id)}
-                onMouseLeave={() => onRaceHover(null)}
-                onClick={() => onRaceSelect(race.id === selectedRaceId ? null : race.id)}
-              >
-                <Card
+              return (
+                <motion.div 
+                  key={race.id}
+                  variants={itemVariants}
                   className={cn(
-                    "w-full h-full flex flex-col", // Ensure card fills motion div
-                    // Remove hover/selection styles from Card, they are on the motion.div now
+                    "w-full max-w-sm cursor-pointer transition-all duration-200",
+                    isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "ring-0"
                   )}
-                  // Remove event handlers from Card itself
+                  onMouseEnter={() => onRaceHover(race.id)}
+                  onMouseLeave={() => onRaceHover(null)}
+                  onClick={() => onRaceSelect(race.id === selectedRaceId ? null : race.id)}
                 >
-                  {/* Image Container */}
-                  <img 
-                    src={race.image_url || getPlaceholderImage(race.distance)} 
-                    alt={`${race.name} - ${race.distance} race course`} 
-                    className="w-full h-32 object-cover" // Adjust height (h-32) as needed
-                    onError={(e) => {
-                      // Optional: Handle image load errors, e.g., set to default placeholder
-                      const target = e.target as HTMLImageElement;
-                      target.onerror = null; // Prevent infinite loop if fallback also fails
-                      target.src = '/images/generic-default.jpeg'; // Fallback image
-                    }}
-                  />
-                  <CardHeader className="pb-2 flex-row justify-between items-start">
-                    <div>
-                      <CardTitle className="text-lg font-semibold leading-tight">
-                        {race.name}
-                      </CardTitle>
-                      <p className="text-sm text-muted-foreground pt-1">
-                        {/* Fix: Add T00:00:00 to parse date string as local time */}
-                        {race.city}, {race.state} - {new Date(race.date + 'T00:00:00').toLocaleDateString()}
-                      </p>
-                    </div>
-                     {/* Tooltip for Elevation - Use total_elevation_gain */}
-                     {race.total_elevation_gain != null && (
-                      <TooltipProvider delayDuration={100}>
-                         <Tooltip>
-                           <TooltipTrigger asChild>
-                              <Badge
-                                variant="outline"
-                                className="flex items-center gap-1 shrink-0"
-                                >
-                                <Mountain className="h-3 w-3" />
-                                {/* Display numeric elevation gain with unit */}
-                                {`${race.total_elevation_gain.toLocaleString()} ft of elevation gain`}
-                              </Badge>
+                  <Card
+                    className={cn(
+                      "w-full h-full flex flex-col", // Ensure card fills motion div
+                    )}
+                  >
+                    {/* Image Container */}
+                    <img 
+                      src={race.image_url || getPlaceholderImage(race.distance)} 
+                      alt={`${race.name} - ${race.distance} race course`} 
+                      className="w-full h-32 object-cover" // Adjust height (h-32) as needed
+                      onError={(e) => {
+                        // Optional: Handle image load errors, e.g., set to default placeholder
+                        const target = e.target as HTMLImageElement;
+                        target.onerror = null; // Prevent infinite loop if fallback also fails
+                        target.src = '/images/generic-default.jpeg'; // Fallback image
+                      }}
+                    />
+                    <CardHeader className="pb-2 flex-row justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg font-semibold leading-tight">
+                          {race.name}
+                        </CardTitle>
+                        <p className="text-sm text-muted-foreground pt-1">
+                          {/* Fix: Add T00:00:00 to parse date string as local time */}
+                          {race.city}, {race.state} - {new Date(race.date + 'T00:00:00').toLocaleDateString()}
+                        </p>
+                      </div>
+                       {/* Tooltip for Elevation - Use total_elevation_gain */}
+                       {race.total_elevation_gain != null && (
+                        <TooltipProvider delayDuration={100}>
+                           <Tooltip>
+                             <TooltipTrigger asChild>
+                                <Badge
+                                  variant="outline"
+                                  className="flex items-center gap-1 shrink-0"
+                                  >
+                                  <Mountain className="h-3 w-3" />
+                                  {/* Display numeric elevation gain with unit */}
+                                  {`${race.total_elevation_gain.toLocaleString()} ft of elevation gain`}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Total Elevation Gain</p>
+                              </TooltipContent>
+                            </Tooltip>
+                         </TooltipProvider>
+                       )}
+                    </CardHeader>
+                    <CardContent className="flex-grow space-y-3 pt-2"> {/* Added flex-grow and space-y */} 
+                      {/* Basic Info */}
+                      <div className="text-sm space-y-1"> {/* Add space-y-1 for better spacing */}
+                        <p>Distance: {race.distance}</p>
+                        {/* Display total_elevation_gain if available */}
+                        {race.total_elevation_gain != null && (
+                           <p className="flex items-center"> {/* Use flex for icon alignment */}
+                             <Mountain className="h-4 w-4 mr-1.5 text-muted-foreground"/> {/* Add Mountain icon */}
+                             {/* Display numeric elevation gain with unit */}
+                             <span>Elevation Gain: {race.total_elevation_gain.toLocaleString()} ft</span>
+                           </p>
+                        )}
+                      </div>
+
+                      {/* AI Summary */}
+                      {race.ai_summary && (
+                        <div className="text-xs text-muted-foreground border-l-2 border-primary pl-2 italic my-2"> {/* Add margin-y */}
+                          <Sparkles className="inline h-3 w-3 mr-1" /> {race.ai_summary}
+                        </div>
+                      )}
+
+                      {/* PR Potential */}
+                      {race.pr_potential_score && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center text-sm cursor-help"> {/* Added cursor-help */} 
+                                  <Zap className="h-4 w-4 mr-1 text-yellow-500" />
+                                  <span>PR Potential: </span>
+                                  <Badge variant="secondary" className="ml-1.5">{race.pr_potential_score}/10</Badge>
+                              </div>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Total Elevation Gain</p>
+                              <p className="text-xs max-w-[200px]"> {/* Limit width */}
+                                 Score (1-10) indicating potential for a personal record based on course profile and historical data.
+                              </p>
                             </TooltipContent>
                           </Tooltip>
-                       </TooltipProvider>
-                     )}
-                  </CardHeader>
-                  <CardContent className="flex-grow space-y-3 pt-2"> {/* Added flex-grow and space-y */} 
-                    {/* Basic Info */}
-                    <div className="text-sm space-y-1"> {/* Add space-y-1 for better spacing */}
-                      <p>Distance: {race.distance}</p>
-                      {/* Display total_elevation_gain if available */}
-                      {race.total_elevation_gain != null && (
-                         <p className="flex items-center"> {/* Use flex for icon alignment */}
-                           <Mountain className="h-4 w-4 mr-1.5 text-muted-foreground"/> {/* Add Mountain icon */}
-                           {/* Display numeric elevation gain with unit */}
-                           <span>Elevation Gain: {race.total_elevation_gain.toLocaleString()} ft</span>
-                         </p>
+                        </TooltipProvider>
                       )}
-                    </div>
 
-                    {/* AI Summary */}
-                    {race.ai_summary && (
-                      <div className="text-xs text-muted-foreground border-l-2 border-primary pl-2 italic my-2"> {/* Add margin-y */}
-                        <Sparkles className="inline h-3 w-3 mr-1" /> {race.ai_summary}
-                      </div>
-                    )}
-
-                    {/* PR Potential */}
-                    {race.pr_potential_score && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="flex items-center text-sm cursor-help"> {/* Added cursor-help */} 
-                                <Zap className="h-4 w-4 mr-1 text-yellow-500" />
-                                <span>PR Potential: </span>
-                                <Badge variant="secondary" className="ml-1.5">{race.pr_potential_score}/10</Badge>
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="text-xs max-w-[200px]"> {/* Limit width */}
-                               Score (1-10) indicating potential for a personal record based on course profile and historical data.
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-
-                    {/* Social Signals */}
-                    <div className="text-xs space-y-1 pt-1">
-                      {race.similar_runners_count !== undefined && (
-                        <div className="flex items-center text-muted-foreground">
-                          <Users className="h-3 w-3 mr-1.5" /> {race.similar_runners_count} similar runners PR'd here
-                        </div>
-                      )}
-                        {race.training_groups_count !== undefined && (
-                        <div className="flex items-center text-muted-foreground">
-                            <Group className="h-3 w-3 mr-1.5" /> {race.training_groups_count} training groups joined
-                        </div>
-                      )}
-                      {race.similar_pace_runners_count !== undefined && (
+                      {/* Social Signals */}
+                      <div className="text-xs space-y-1 pt-1">
+                        {race.similar_runners_count !== undefined && (
                           <div className="flex items-center text-muted-foreground">
-                            <Users className="h-3 w-3 mr-1.5" /> {race.similar_pace_runners_count} runners at your pace signed up
-                        </div>
-                      )}
-                    </div>
+                            <Users className="h-3 w-3 mr-1.5" /> {race.similar_runners_count} similar runners PR'd here
+                          </div>
+                        )}
+                          {race.training_groups_count !== undefined && (
+                          <div className="flex items-center text-muted-foreground">
+                              <Group className="h-3 w-3 mr-1.5" /> {race.training_groups_count} training groups joined
+                          </div>
+                        )}
+                        {race.similar_pace_runners_count !== undefined && (
+                            <div className="flex items-center text-muted-foreground">
+                              <Users className="h-3 w-3 mr-1.5" /> {race.similar_pace_runners_count} runners at your pace signed up
+                          </div>
+                        )}
+                      </div>
 
-                    {/* Website Link */}
-                      {race.website && race.website !== '#' && (
-                      <a href={race.website} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline mt-2 block pt-2 border-t border-dashed" onClick={(e) => e.stopPropagation()}>
-                        Visit Website
-                      </a>
-                      )}
-                  </CardContent>
-                  <CardFooter>
-                    <Button 
-                      variant={isInPlan ? "destructive" : "outline"} 
-                      size="sm" 
-                      className="w-full" 
-                      disabled={!user || isButtonDisabled} // Disable if not logged in or during action/loading
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        buttonAction(); // Call the determined action
-                      }} 
-                    >
-                      {currentButtonState === 'loading' ? (
-                        <>
-                          {/* Loading Spinner? */}
-                          Processing...
-                        </>
-                      ) : currentButtonState === 'success' ? (
-                        <>
-                          <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> {isInPlan ? 'Added!' : 'Removed!'}
-                        </>
-                      ) : currentButtonState === 'error' ? (
-                        <>
-                          <AlertCircle className="mr-2 h-4 w-4 text-destructive" /> Error
-                        </>
-                      ) : (
-                        <>
-                          <ButtonIcon className="mr-2 h-4 w-4" /> {buttonText}
-                        </>
-                      )}
-                    </Button>
-                  </CardFooter>
-                </Card>
-              </motion.div>
-            );
-          })}
-        </motion.div>
+                      {/* Website Link */}
+                        {race.website && race.website !== '#' && (
+                        <a href={race.website} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline mt-2 block pt-2 border-t border-dashed" onClick={(e) => e.stopPropagation()}>
+                          Visit Website
+                        </a>
+                        )}
+                    </CardContent>
+                    <CardFooter>
+                      <Button 
+                        variant={isInPlan ? "destructive" : "outline"} 
+                        size="sm" 
+                        className="w-full" 
+                        disabled={!user || isButtonDisabled} // Disable if not logged in or during action/loading
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          buttonAction(); // Call the determined action
+                        }} 
+                      >
+                        {currentState === 'loading' ? (
+                          <>
+                            {/* Loading Spinner? */}
+                            Processing...
+                          </>
+                        ) : currentState === 'success' ? (
+                          <>
+                            <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> {isInPlan ? 'Added!' : 'Removed!'}
+                          </>
+                        ) : currentState === 'error' ? (
+                          <>
+                            <AlertCircle className="mr-2 h-4 w-4 text-destructive" /> Error
+                          </>
+                        ) : (
+                          <>
+                            <ButtonIcon className="mr-2 h-4 w-4" /> {buttonText}
+                          </>
+                        )}
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                </motion.div>
+              );
+            })}
+          </motion.div>
+        </>
       )}
     </section>
   );
