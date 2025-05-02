@@ -482,20 +482,21 @@ export default function MyPlanPage() {
 
             {/* Plan Generation/View Modal */}
             <Dialog open={isPlanModalOpen} onOpenChange={setIsPlanModalOpen}>
-                <DialogContent className="max-w-3xl"> 
+                <DialogContent className="max-w-3xl">
                     <DialogHeader>
                         <DialogTitle>
                             {planWasJustGenerated ? "Generated Training Plan" : "Training Plan"}
                         </DialogTitle>
                         <DialogDescription>
+                            {/* Simplify description */}
                             {currentPlanOutline ? 
-                                `Plan for ${currentPlanOutline.race_name} (${currentPlanOutline.race_distance}) - ${currentPlanOutline.total_weeks} weeks` 
+                                `Review your personalized training outline below.` 
                                 : "Loading plan details..."}
                         </DialogDescription>
                     </DialogHeader>
 
-                    {/* Modal Content Area */}
-                    <div className="mt-4 max-h-[70vh] overflow-y-auto pr-2"> 
+                    {/* Modal Content Area - Reduce max height */}
+                    <div className="mt-4 max-h-[60vh] overflow-y-auto pr-2"> 
                         {(isPlanGenerating || isViewingPlan) && !planGenerationError && (
                             <div className="flex items-center justify-center p-8">
                                 <Loader2 className="h-8 w-8 animate-spin text-primary" />

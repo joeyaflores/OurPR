@@ -246,7 +246,7 @@ export function TrainingPlanDisplay({ plan, raceDate, userPrString }: TrainingPl
           </Accordion>
 
           {plan.notes && plan.notes.length > 0 && (
-              <div className="mt-6 p-3 border rounded-md bg-muted/50 text-muted-foreground">
+              <div className="mt-6 p-3 border rounded-md bg-muted text-muted-foreground">
                   <h4 className="font-semibold text-sm mb-2 flex items-center">
                       <Info className="h-4 w-4 mr-2" /> Coach Notes
                   </h4>
