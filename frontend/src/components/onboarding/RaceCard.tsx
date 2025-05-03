@@ -5,17 +5,33 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { Race } from '@/lib/apiClient'; // Import the Race type
-import { ExternalLink, CalendarDays, Thermometer, BarChart, Mountain, PlusCircle, CheckCircle, AlertCircle, Trash2, Trophy, Clock, Flag, Rocket, Eye } from 'lucide-react'; // Icons
+import { ExternalLink, CalendarDays, Thermometer, BarChart, Mountain, PlusCircle, CheckCircle, AlertCircle, Trash2, Trophy, Clock, Flag, Rocket, Eye, AlertTriangle } from 'lucide-react'; // Icons
 import { createClient } from '@/lib/supabase/client'; // Import Supabase client
 import type { User } from '@supabase/supabase-js';
 import { toast } from "sonner"; // Import toast
 import { Progress } from "@/components/ui/progress"; // Import Progress
+import { cn } from "@/lib/utils"; // Import cn for conditional classes
+import { 
+    AlertDialog, 
+    AlertDialogAction, 
+    AlertDialogCancel, 
+    AlertDialogContent, 
+    AlertDialogDescription, 
+    AlertDialogFooter, 
+    AlertDialogHeader, 
+    AlertDialogTitle, 
+    AlertDialogTrigger 
+} from "@/components/ui/alert-dialog";
 
 // Action States for the button
 type ActionState = 'idle' | 'loading' | 'success' | 'error';
 
+// Define a type that includes the base Race and the optional isSelected
+// This allows the component to accept both the base Race type and one potentially augmented with isSelected
+type RaceWithSelection = Race & { isSelected?: boolean };
+
 interface RaceCardProps {
-  race: Race;
+  race: RaceWithSelection;
   viewMode?: 'discover' | 'plan'; // Add viewMode prop
   onRaceRemoved?: (raceId: string | number) => void; // Callback for successful removal
   userPr?: string | null; // Add optional prop for user's PR time string
@@ -30,6 +46,9 @@ interface RaceCardProps {
   currentWeekNumber?: number | null; // <-- Add prop for current week
   totalPlanWeeks?: number | null; // <-- Add prop for total weeks
   isPrOfficial?: boolean | null; // <-- Add prop for PR official status
+  onSelect?: (raceId: string | number) => void;
+  onRemove?: (raceId: string | number) => void;
+  onDeletePlanRequest?: (raceId: string | number) => void; // <-- Add callback prop for delete request
 }
 
 // Add API Base URL (consider moving to a config file)
@@ -50,7 +69,10 @@ export function RaceCard({
     hasSavedPlan,
     currentWeekNumber,
     totalPlanWeeks,
-    isPrOfficial
+    isPrOfficial,
+    onSelect,
+    onRemove,
+    onDeletePlanRequest
 }: RaceCardProps) { 
     const supabase = createClient();
     const [user, setUser] = useState<User | null>(null);
@@ -59,6 +81,7 @@ export function RaceCard({
     // State to hold the IDs of races currently in the user's plan
     const [plannedRaceIds, setPlannedRaceIds] = useState<Set<string | number>>(new Set());
     const [isPlanLoading, setIsPlanLoading] = useState(true); // Loading state for the plan itself
+    const [isRemoving, setIsRemoving] = useState(false);
 
     // Get user session and plan state on mount
     useEffect(() => {
@@ -267,8 +290,18 @@ export function RaceCard({
         }
     }
 
+    // --- Determine card interaction and appearance based on viewMode --- 
+    const isPlanMode = viewMode === 'plan';
+    const cardClasses = cn(
+        "transition-all duration-200 ease-out",
+        isPlanMode 
+            ? "bg-gradient-to-br from-blue-100/50 via-blue-50/20 to-background dark:from-blue-900/30 dark:via-blue-950/10 dark:to-background border-blue-200/50 dark:border-blue-800/30" // Apply gradient in plan mode
+            : "hover:shadow-md hover:-translate-y-1 bg-card border", // Default hover/bg for discover
+        !isPlanMode && race.isSelected && "ring-2 ring-primary shadow-lg" // Selection style in discover mode
+    );
+
   return (
-    <Card key={race.id} className="overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 flex flex-col">
+    <Card className={cardClasses}>
         <CardHeader className="pb-3">
             <CardTitle className="text-lg font-semibold">{race.name}</CardTitle>
             <CardDescription className="flex items-center text-sm flex-wrap gap-x-2 gap-y-1">
@@ -436,6 +469,41 @@ export function RaceCard({
                         <span className="sr-only">Remove from Plan</span>
                     </Button>
                  </div>
+            )}
+
+            {/* Delete Plan Button (Show only if a plan exists) */}
+            {hasSavedPlan && onDeletePlanRequest && (
+                 <AlertDialog>
+                     <AlertDialogTrigger asChild>
+                         <Button 
+                             variant="destructive"
+                             size="sm"
+                             className="col-start-2" // Position in the second column
+                             disabled={isGeneratingPlan || isViewingPlan} // Disable if other actions are in progress
+                         >
+                             <Trash2 className="mr-2 h-4 w-4" /> Delete Plan
+                         </Button>
+                     </AlertDialogTrigger>
+                     <AlertDialogContent>
+                         <AlertDialogHeader>
+                             <AlertDialogTitle className="flex items-center">
+                                 <AlertTriangle className="h-5 w-5 mr-2 text-destructive"/> Are you absolutely sure?
+                                </AlertDialogTitle>
+                             <AlertDialogDescription>
+                                 This action cannot be undone. This will permanently delete the generated training plan associated with the <strong>{race.name}</strong>.
+                             </AlertDialogDescription>
+                         </AlertDialogHeader>
+                         <AlertDialogFooter>
+                             <AlertDialogCancel>Cancel</AlertDialogCancel>
+                             <AlertDialogAction 
+                                 onClick={() => onDeletePlanRequest(race.id)}
+                                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                             >
+                                    Delete Plan
+                                </AlertDialogAction>
+                         </AlertDialogFooter>
+                     </AlertDialogContent>
+                 </AlertDialog>
             )}
         </CardFooter>
     </Card>

@@ -1,6 +1,8 @@
 'use client';
 
-import type { TrainingPlanOutline, WeeklySummary } from '@/types/training_plan';
+import type { DetailedTrainingPlan, DetailedWeek, DailyWorkout } from '@/types/training_plan';
+import React, { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import {
   Accordion,
   AccordionContent,
@@ -19,20 +21,29 @@ import {
     TrendingUp,    // Long Run
     Bed,           // Rest
     Bike,          // Cross-Training
-    ChevronsDown,  // Taper
-    Sparkles       // Personalization indicator
+    Dumbbell,      // Strength (New)
+    Play,          // Warm-up (Placeholder)
+    Pause,         // Cool-down (Placeholder)
+    Flag,          // Race Pace (Placeholder)
+    HelpCircle,    // Other/Unknown
+    Sparkles,       // Personalization indicator
+    CheckCircle2,  // Completed
+    XCircle,       // Skipped
+    Circle,        // Pending (or use default)
+    Loader2,       // Loading state for update
+    Target,        // Target icon
+    CheckCheck,    // CheckCheck icon
+    ChevronUp,     // <-- Add Up Arrow
+    ChevronDown,   // <-- Add Down Arrow
 } from "lucide-react";
 import { 
     parseISO, 
-    differenceInWeeks, 
-    startOfWeek, 
-    subWeeks, 
     isPast, 
     isToday,
-    endOfWeek,
-    addDays,
-    format,
-    formatDistanceToNowStrict
+    startOfDay,
+    endOfDay,
+    differenceInDays,
+    format
 } from 'date-fns';
 import {
     Tooltip,
@@ -40,93 +51,26 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
-import React from 'react';
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { workoutTypeMap, getWorkoutIcon } from './planUtils';
+import { WorkoutDetailModal } from './WorkoutDetailModal';
 
-interface TrainingPlanDisplayProps {
-  plan: TrainingPlanOutline;
-  raceDate: string;
-  userPrString?: string | null;
-}
+// API Base URL (Consider moving to config)
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
-// --- Keyword Definitions for Tooltips and Icons ---
-const keywordMap: Record<string, { icon: React.ElementType, tooltip: string }> = {
-    "Easy Run": { icon: Footprints, tooltip: "Run at a comfortable, conversational pace to build aerobic base." },
-    "Tempo Run": { icon: Gauge, tooltip: "Run at a 'comfortably hard' pace, sustainable for a significant duration (e.g., 20-60 min), to improve lactate threshold." },
-    "Intervals": { icon: Zap, tooltip: "Short, high-intensity bursts followed by recovery periods, designed to improve speed and efficiency." },
-    "Speed Work": { icon: Zap, tooltip: "High-intensity running (like intervals or hill repeats) aimed at improving pace and running economy." },
-    "Long Run": { icon: TrendingUp, tooltip: "The longest run of the week, done at an easy pace, crucial for endurance and mental toughness." },
-    "Rest Day": { icon: Bed, tooltip: "Crucial for recovery and adaptation. No running or strenuous activity." },
-    "Cross-Training": { icon: Bike, tooltip: "Activities other than running (e.g., cycling, swimming, strength training) to improve overall fitness and reduce injury risk." },
-    "Taper": { icon: ChevronsDown, tooltip: "Reducing training volume in the final weeks before a race to allow the body to recover and be fresh on race day." },
-    // Add more terms as needed
-};
-// Create a regex to match any of the keywords, case-insensitive, ensuring whole words
-const keywordRegex = new RegExp(`\\b(${Object.keys(keywordMap).join('|')})\\b`, 'gi');
-
-// --- Helper Function to Format Summary ---
-const formatSummary = (summary: string): React.ReactNode[] => {
-    const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
-
-    summary.replace(keywordRegex, (match, _, offset) => {
-        // Add text before the match
-        if (offset > lastIndex) {
-            parts.push(summary.substring(lastIndex, offset));
-        }
-
-        // Find the keyword definition (case-insensitive lookup)
-        const keywordInfo = Object.entries(keywordMap).find(([key]) => key.toLowerCase() === match.toLowerCase())?.[1];
-
-        if (keywordInfo) {
-            const IconComponent = keywordInfo.icon;
-            parts.push(
-                <Tooltip key={offset}>
-                    <TooltipTrigger asChild>
-                        <span className="inline-flex items-center font-semibold whitespace-nowrap mx-1">
-                             <IconComponent className="h-4 w-4 mr-1 flex-shrink-0" />
-                            {match}
-                        </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                        <p className="max-w-xs">{keywordInfo.tooltip}</p>
-                    </TooltipContent>
-                </Tooltip>
-            );
-        } else {
-             // Should not happen with the regex, but fallback to plain text
-            parts.push(match);
-        }
-
-        lastIndex = offset + match.length;
-        return match; // Required by replace, value isn't used directly here
-    });
-
-    // Add any remaining text after the last match
-    if (lastIndex < summary.length) {
-        parts.push(summary.substring(lastIndex));
-    }
-
-    return parts;
-};
-// ----------------------------------------
-
-// Helper to determine week status relative to today
-const getWeekStatus = (weekNumber: number, totalWeeks: number, raceDateString: string): 'past' | 'current' | 'future' => {
+// Helper to determine week status relative to today using week start/end dates
+const getWeekStatus = (weekStartDateStr: string, weekEndDateStr: string): 'past' | 'current' | 'future' => {
     try {
-        const raceDate = parseISO(raceDateString);
-        const today = new Date();
-
-        // Calculate the start date of the target week number relative to the race week
-        // Week 1 starts totalWeeks before race week, Week N starts totalWeeks - N + 1 before race week
-        const weeksBeforeRace = totalWeeks - weekNumber + 1;
-        const weekStartDate = startOfWeek(subWeeks(raceDate, weeksBeforeRace), { weekStartsOn: 1 }); // Start week on Mon
-        const weekEndDate = endOfWeek(weekStartDate, { weekStartsOn: 1 }); // End week on Sun
+        const today = startOfDay(new Date()); // Use startOfDay for consistent comparison
+        const weekStartDate = parseISO(weekStartDateStr);
+        const weekEndDate = endOfDay(parseISO(weekEndDateStr)); // Use endOfDay to include the full Sunday
 
         // Check if today falls within this week
         if (today >= weekStartDate && today <= weekEndDate) {
             return 'current';
         }
-        // Check if the week is entirely in the past
+        // Check if the week is entirely in the past (week end date is before today)
         if (today > weekEndDate) {
             return 'past';
         }
@@ -134,139 +78,651 @@ const getWeekStatus = (weekNumber: number, totalWeeks: number, raceDateString: s
         return 'future';
 
     } catch (error) {
-        console.error("Error calculating week status:", error);
+        console.error("Error calculating week status from dates:", error);
         return 'future'; // Default to future if calculation fails
     }
 };
 
-export function TrainingPlanDisplay({ plan, raceDate, userPrString }: TrainingPlanDisplayProps) {
-  if (!plan) return null;
+// Helper to determine day status
+const getDayStatus = (dayDateStr: string): 'past' | 'today' | 'future' => {
+    try {
+        const today = startOfDay(new Date());
+        const dayDate = parseISO(dayDateStr);
+
+        if (isToday(dayDate)) {
+            return 'today';
+        }
+        if (isPast(dayDate) && !isToday(dayDate)) {
+            return 'past';
+        }
+        return 'future';
+    } catch (error) {
+        console.error("Error calculating day status:", error);
+        return 'future';
+    }
+};
+
+// --- Define Shiftable Workout Types --- 
+// const SHIFTABLE_WORKOUT_TYPES: Set<DailyWorkout['workout_type']> = new Set([...]);
+// Define types considered "hard" that flexible types shouldn't be moved next to
+// const HARD_WORKOUT_TYPES: Set<DailyWorkout['workout_type']> = new Set([...]);
+// -------------------------------------
+
+interface TrainingPlanDisplayProps {
+  plan: DetailedTrainingPlan;
+  raceId: string | number;
+  onPlanUpdate?: (updatedPlan: DetailedTrainingPlan) => void;
+  userPrString?: string | null; // Keep for displaying personalization note if available
+}
+
+export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, userPrString }: TrainingPlanDisplayProps) {
+    // Local state to manage the plan, allowing updates without full page reload
+    const [plan, setPlan] = useState<DetailedTrainingPlan>(initialPlan);
+    // State to track which day is currently being updated
+    const [updatingDayDate, setUpdatingDayDate] = useState<string | null>(null);
+    // State for managing the detail modal
+    const [selectedWorkout, setSelectedWorkout] = useState<DailyWorkout | null>(null);
+    const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+
+    // Update local state if the initial plan prop changes
+    // This is important if the parent component refetches the plan
+    useEffect(() => {
+        setPlan(initialPlan);
+    }, [initialPlan]);
+
+  if (!plan || !plan.weeks || plan.weeks.length === 0) {
+      console.warn("TrainingPlanDisplay: Plan data is missing or empty.");
+      return <Card><CardHeader><CardTitle>Training Plan Unavailable</CardTitle><CardDescription>Could not load the training plan details.</CardDescription></CardHeader></Card>;
+  }
 
   let defaultAccordionValue: string | undefined;
-  // Use the updated getWeekStatus logic to find the current week for default open
+  // Find the current week based on its start and end dates for default open
   for (const week of plan.weeks) {
-      const status = getWeekStatus(week.week_number, plan.total_weeks, raceDate);
+      const status = getWeekStatus(week.start_date, week.end_date);
       if (status === 'current') {
           defaultAccordionValue = `week-${week.week_number}`;
           break; // Found the current week
       }
   }
-  // NOTE: The defaultAccordionValue calculation below this loop was removed as redundant
-  // It's now handled by the getWeekStatus call within the loop itself.
-  // We keep the error handling for the initial parse though.
-  try {
-     const raceDateObj = parseISO(raceDate); // Still need to parse for basic checks if needed
-     // Example basic check (optional): Ensure race date is valid if other logic depends on it
-  } catch (error) {
-      console.error("Error parsing race date for default open calculation:", error);
-  }
+   // If no current week found (e.g., plan is entirely future/past), open the first week
+   if (!defaultAccordionValue && plan.weeks.length > 0) {
+        defaultAccordionValue = `week-${plan.weeks[0].week_number}`;
+   }
 
-  // --- Add Date and Countdown Calculation ---
+
+  // --- Date and Countdown Calculation (using plan.race_date) ---
   let formattedRaceDate: string | null = null;
-  let timeUntilRace: string | null = null;
+  let raceDateObj : Date | null = null;
   try {
-    const parsedDate = parseISO(raceDate);
-    formattedRaceDate = format(parsedDate, 'MMMM d, yyyy');
-    // Only show countdown if the race is in the future
-    if (!isPast(parsedDate) || isToday(parsedDate)) {
-        timeUntilRace = formatDistanceToNowStrict(parsedDate, { addSuffix: true });
-    } else {
-        timeUntilRace = "Race Finished"; // Or handle as needed
-    }
+    raceDateObj = parseISO(plan.race_date);
+    formattedRaceDate = format(raceDateObj, 'PPPP'); // e.g., "Tuesday, June 6th, 2023"
   } catch (error) {
-    console.error("Error formatting race date/countdown:", error);
+    console.error("Error formatting race date:", error);
     formattedRaceDate = "Invalid Date";
   }
   // --- End Calculation ---
 
+  // --- Calculate Overall Adherence --- 
+  const calculateOverallAdherence = (): number | null => {
+      if (!plan || !plan.weeks) return null;
+      
+      let totalPastPlanned = 0;
+      let totalCompleted = 0;
+      const today = startOfDay(new Date());
+
+      plan.weeks.forEach(week => {
+          week.days.forEach(day => {
+              try {
+                  const dayDate = parseISO(day.date);
+                  // Consider only days up to and including today
+                  if (dayDate <= today) {
+                      // Count non-rest days as planned
+                      if (day.workout_type !== 'Rest') {
+                          totalPastPlanned++;
+                          // Count completed days
+                          if (day.status === 'completed') {
+                              totalCompleted++;
+                          }
+                      }
+                  }
+              } catch (e) {
+                  console.error("Error parsing day date during adherence calculation:", e);
+              }
+          });
+      });
+
+      if (totalPastPlanned === 0) {
+          return null; // Avoid division by zero, return null if no past planned days
+      }
+
+      return Math.round((totalCompleted / totalPastPlanned) * 100);
+  };
+
+  const overallAdherence = calculateOverallAdherence();
+  // -------------------------------------
+
+  // --- Calculate Weekly Adherence --- 
+  const calculateWeeklyConsistency = (week: DetailedWeek): number | null => {
+      let plannedInWeek = 0;
+      let completedInWeek = 0;
+      const today = startOfDay(new Date());
+      const weekStatus = getWeekStatus(week.start_date, week.end_date);
+
+      // Only calculate for past or current weeks
+      if (weekStatus === 'future') return null;
+
+      week.days.forEach(day => {
+          try {
+              const dayDate = parseISO(day.date);
+              // If it's a past week, consider all days.
+              // If it's the current week, only consider days up to today.
+              const considerDay = weekStatus === 'past' || (weekStatus === 'current' && dayDate <= today);
+
+              if (considerDay && day.workout_type !== 'Rest') {
+                  plannedInWeek++;
+                  if (day.status === 'completed') {
+                      completedInWeek++;
+                  }
+              }
+          } catch (e) {
+              console.error("Error parsing day date during weekly consistency calculation:", e);
+          }
+      });
+
+      if (plannedInWeek === 0) {
+          // If no non-rest workouts were planned in the relevant period, consistency is not applicable
+          return null; 
+      }
+
+      return Math.round((completedInWeek / plannedInWeek) * 100);
+  };
+  // -------------------------------------
+
+  // --- Function to handle status update API call --- 
+  const handleUpdateStatus = async (dayDate: string, newStatus: DailyWorkout['status']) => {
+      setUpdatingDayDate(dayDate); // Set loading state for this specific day
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      
+      if (!accessToken) {
+          toast.error("Authentication error. Please log in again.");
+          setUpdatingDayDate(null); // Clear loading state
+          return;
+      }
+
+      if (!raceId) {
+          toast.error("Error: Could not identify the race for this plan.");
+          setUpdatingDayDate(null);
+          return;
+      }
+
+      const url = `${API_BASE_URL}/api/users/me/races/${raceId}/plan/days/${dayDate}`;
+
+      // --- Optimistic UI Update --- 
+      // Temporarily update the local state before the API call completes
+      const originalPlan = JSON.parse(JSON.stringify(plan)); // Deep copy for potential rollback
+      const updatedPlanOptimistic = JSON.parse(JSON.stringify(plan)); // Deep copy to modify
+      let dayUpdatedOptimistic = false;
+      for (const week of updatedPlanOptimistic.weeks) {
+          for (const day of week.days) {
+              if (day.date === dayDate) {
+                  day.status = newStatus;
+                  dayUpdatedOptimistic = true;
+                  break;
+              }
+          }
+          if (dayUpdatedOptimistic) break;
+      }
+      if(dayUpdatedOptimistic) {
+          setPlan(updatedPlanOptimistic);
+      }
+      // -----------------------------
+
+      try {
+          const response = await fetch(url, {
+              method: 'PATCH',
+              headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                  'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ status: newStatus }),
+          });
+
+          if (!response.ok) {
+              let errorDetail = `API error: ${response.status}`;
+              try {
+                  const errorData = await response.json();
+                  errorDetail = errorData.detail || errorDetail;
+              } catch { /* Ignore */ }
+              throw new Error(errorDetail);
+          }
+
+          // API call successful, the optimistic update is now confirmed.
+          // We could potentially update the local state with the response data if needed,
+          // but the optimistic update already did it.
+          const updatedDay: DailyWorkout = await response.json(); 
+          // console.log("Successfully updated status for", dayDate, "to", updatedDay.status);
+          
+          // Optional: Call the onPlanUpdate callback if provided, passing the *optimistically* updated plan
+          // This allows the parent component to know the state has changed.
+          if (onPlanUpdate && dayUpdatedOptimistic) {
+              onPlanUpdate(updatedPlanOptimistic);
+          }
+
+      } catch (e: any) {
+          console.error("Failed to update workout status:", e);
+          toast.error("Update failed", { description: e.message });
+          // Rollback the optimistic update on error
+          setPlan(originalPlan);
+          if (onPlanUpdate) {
+              onPlanUpdate(originalPlan); // Also notify parent of rollback
+          }
+      } finally {
+          setUpdatingDayDate(null); // Clear loading state regardless of outcome
+      }
+  };
+
+  // --- Function to handle opening the detail modal --- 
+  const handleViewDetails = (workout: DailyWorkout) => {
+      setSelectedWorkout(workout);
+      setIsDetailModalOpen(true);
+  };
+
+  // --- Function to handle shifting workouts --- 
+  const handleShiftWorkout = (weekIndex: number, dayIndex: number, direction: 'up' | 'down') => {
+      const targetDayIndex = direction === 'up' ? dayIndex - 1 : dayIndex + 1;
+
+      // Basic boundary check
+      if (targetDayIndex < 0 || targetDayIndex > 6) {
+          // Keep boundary check
+          toast.error("Cannot shift past the beginning or end of the week.");
+          return;
+      }
+
+      const currentWeek = plan.weeks[weekIndex];
+      const dayToMove = currentWeek.days[dayIndex];
+      const targetDay = currentWeek.days[targetDayIndex];
+
+      // --- REMOVE Validation Logic --- 
+      // No more checks based on workout type or proximity
+      // --- End Removed Validation ---
+
+      // Swap only the workout details, keep date/day_of_week
+      setPlan(prevPlan => {
+          const newWeeks = [...prevPlan.weeks];
+          const newDays = [...newWeeks[weekIndex].days];
+          
+          // Extract details to swap (including status)
+          const detailsToMove = {
+              workout_type: dayToMove.workout_type,
+              description: dayToMove.description,
+              distance: dayToMove.distance,
+              duration: dayToMove.duration,
+              intensity: dayToMove.intensity,
+              notes: dayToMove.notes,
+              status: dayToMove.status,
+          };
+          const detailsToReceive = {
+              workout_type: targetDay.workout_type,
+              description: targetDay.description,
+              distance: targetDay.distance,
+              duration: targetDay.duration,
+              intensity: targetDay.intensity,
+              notes: targetDay.notes,
+              status: targetDay.status,
+          };
+
+          // Create new day objects with swapped details
+          newDays[dayIndex] = {
+              ...newDays[dayIndex], // Keep original date, day_of_week, etc.
+              ...detailsToReceive // Apply details from target
+          };
+          newDays[targetDayIndex] = {
+              ...newDays[targetDayIndex], // Keep original date, day_of_week, etc.
+              ...detailsToMove // Apply details from source
+          };
+
+          newWeeks[weekIndex] = { ...newWeeks[weekIndex], days: newDays };
+          const updatedPlan = { ...prevPlan, weeks: newWeeks };
+
+          // --- Call API to persist the change --- 
+          // Use an async IIFE (Immediately Invoked Function Expression) to handle the async call
+          (async () => {
+              const supabase = createClient();
+              const { data: { session } } = await supabase.auth.getSession();
+              const accessToken = session?.access_token;
+              
+              if (!accessToken) {
+                  toast.error("Authentication error. Cannot save plan changes.");
+                  // Consider rolling back the optimistic update here?
+                  // setPlan(prevPlan); // Rollback
+                  return; 
+              }
+
+              const saveUrl = `${API_BASE_URL}/api/users/me/races/${raceId}/generated-plan`;
+              try {
+                  const response = await fetch(saveUrl, {
+                      method: 'PATCH',
+                      headers: {
+                          'Authorization': `Bearer ${accessToken}`,
+                          'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify(updatedPlan), // Send the whole updated plan
+                  });
+
+                  if (!response.ok) {
+                      let errorDetail = `API error: ${response.status}`;
+                      try {
+                          const errorData = await response.json();
+                          errorDetail = errorData.detail || errorDetail;
+                      } catch { /* Ignore */ }
+                      throw new Error(errorDetail);
+                  }
+
+                  // Success!
+                  toast.success("Plan updated successfully!");
+                  // The state is already updated optimistically.
+                  // Optionally, update state with response if backend modifies it:
+                  // const savedPlan = await response.json();
+                  // setPlan(savedPlan); 
+
+              } catch (error: any) {
+                  console.error("Failed to save plan structure update:", error);
+                  toast.error("Failed to save changes", { description: error.message });
+                  // Rollback optimistic update on save failure
+                  setPlan(prevPlan); // Revert to the state before this shift
+              }
+          })();
+          // -----------------------------------------
+
+          // Notify parent if needed (using the optimistically updated plan)
+          if (onPlanUpdate) {
+              onPlanUpdate(updatedPlan);
+          }
+
+          return updatedPlan; // Return optimistically updated plan for immediate UI change
+      });
+  };
+
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delayDuration={150}>
         <div className="space-y-4">
-          {/* --- Add Wrapper for Header Info --- */}
-          <div className="p-4 bg-primary/5 rounded-t-md space-y-1.5"> {/* Adjust spacing as needed */} 
-              <h3 className="text-lg font-semibold">Training Outline: {plan.race_name} ({plan.race_distance})</h3>
+          {/* --- Header Info --- */}
+          {/* Use background based on race date? */}
+          <div className={cn(
+              "p-4 rounded-t-md space-y-1.5",
+              raceDateObj && isPast(raceDateObj) ? "bg-muted/60" : "bg-primary/5"
+          )}>
+              <h3 className="text-lg font-semibold">{plan.race_name} ({plan.race_distance})</h3>
               <p className="text-sm text-muted-foreground">Total Weeks: {plan.total_weeks}</p>
-              {/* Add PR information if available */} 
-              {userPrString && (
-                <p className="text-xs flex items-center"> {/* Removed mt-1, handled by space-y */} 
-                  <Sparkles className="h-4 w-4 mr-1.5 text-primary flex-shrink-0" /> 
-                  <span> 
-                    Personalized considering your {plan.race_distance} PR: {userPrString}
-                  </span>
-                </p>
-              )}
-              {/* --- Add Race Date and Countdown --- */} 
+              {/* --- Race Date --- */}
               {formattedRaceDate && (
-                  <div className="flex items-center text-sm text-muted-foreground"> {/* Removed mt-1 */} 
-                      <CalendarIcon className="h-4 w-4 mr-2" />
-                      <span>{formattedRaceDate}</span>
-                      {timeUntilRace && timeUntilRace !== "Race Finished" && (
-                         <span className="ml-2 text-xs">({timeUntilRace})</span>
+                  <div className="flex items-center text-sm text-muted-foreground">
+                      <CalendarIcon className="h-4 w-4 mr-2 flex-shrink-0" />
+                      <span>Race Date: {formattedRaceDate}</span>
+                      {raceDateObj && isPast(raceDateObj) && (
+                         <Badge variant="secondary" className="ml-2 text-xs">Completed</Badge>
                       )}
                   </div>
               )}
-          </div>
-          {/* --- End Wrapper --- */}
+               {/* --- Overall Adherence --- */}
+               {overallAdherence !== null && (
+                    <div className="flex items-center text-sm text-muted-foreground pt-1">
+                        <CheckCheck className="h-4 w-4 mr-2 flex-shrink-0 text-green-600" />
+                        <span>Progress: <strong>{overallAdherence}%</strong></span>
+                    </div>
+               )}
+               {/* ----------------------- */}
+               {/* --- Personalization Info --- */}
+               {/* Use plan.personalization_details if available */}
+               {plan.personalization_details?.pr_used && (
+                 <p className="text-xs flex items-center text-muted-foreground">
+                   <Sparkles className="h-4 w-4 mr-1.5 text-primary flex-shrink-0" />
+                   <span>
+                     Personalized using {plan.personalization_details.pr_used}
+                   </span>
+                 </p>
+               )}
+               {/* Display provided userPrString as fallback/override if needed? */}
+               {/* For now, prioritize plan.personalization_details */}
+               {/* {userPrString && !plan.personalization_details?.pr_used && ( ... )} */}
 
-          {/* Make Accordion container separate from header bg */}
-          <div className="px-4 pb-4"> {/* Add padding around accordion */} 
-              <Accordion type="single" collapsible defaultValue={defaultAccordionValue} className="w-full">
-                {plan.weeks.map((week) => {
-                    const status = getWeekStatus(week.week_number, plan.total_weeks, raceDate);
-                    const isPastWeek = status === 'past';
-                    const isCurrentWeek = status === 'current';
+          </div>
+          {/* --- End Header --- */}
+
+          {/* Accordion for Weeks */}
+          <div className="pb-4"> 
+              <Accordion type="single" collapsible defaultValue={defaultAccordionValue} className="w-full space-y-2">
+                {plan.weeks.map((week, weekIndex) => {
+                    const dayIds = week.days.map(d => d.date);
+                    const weekStatus = getWeekStatus(week.start_date, week.end_date);
+                    const isPastWeek = weekStatus === 'past';
+                    const isCurrentWeek = weekStatus === 'current';
 
                     return (
                         <AccordionItem 
+                            key={week.week_number} 
                             value={`week-${week.week_number}`} 
-                            key={week.week_number}
                             className={cn(
-                                "border rounded-md mb-2 overflow-hidden transition-all", // Base item style
-                                isPastWeek && "opacity-60 bg-muted/50 border-transparent",
-                                isCurrentWeek && "border-primary border-2 shadow-md bg-primary/10",
-                                !isCurrentWeek && "border"
+                                "border rounded-md transition-all duration-300",
+                                isPastWeek && "bg-muted/50 border-muted/60",
+                                isCurrentWeek && "border-primary border-2 shadow-md bg-primary/5",
+                                !isCurrentWeek && !isPastWeek && "border bg-card" // Future week default
                             )}
                         >
                             <AccordionTrigger 
                                 className={cn(
-                                    "px-4 py-3 text-base font-semibold hover:no-underline",
-                                    isPastWeek && "line-through"
+                                    "px-4 py-3 text-base font-medium hover:no-underline", // Adjusted font weight
+                                    isPastWeek && "text-muted-foreground",
                                 )}
                             >
                                 <div className="flex justify-between items-center w-full">
-                                   <span>Week {week.week_number}</span>
+                                   <div className="flex flex-col items-start">
+                                        <span className="font-semibold">Week {week.week_number}</span>
+                                        <span className="text-xs text-muted-foreground font-normal">
+                                            {format(parseISO(week.start_date), 'MMM d')} - {format(parseISO(week.end_date), 'MMM d, yyyy')}
+                                        </span>
+                                   </div>
+                                   <div className="flex items-center space-x-2">
+                                       {week.estimated_weekly_mileage && (
+                                            <Badge variant="outline" className="text-xs font-normal mr-2 hidden sm:inline-flex">
+                                                ~{week.estimated_weekly_mileage}
+                                            </Badge>
+                                       )}
+                                       {/* Display Weekly Consistency */}
+                                       {(() => {
+                                           const weeklyConsistency = calculateWeeklyConsistency(week);
+                                           let label = "Progress:";
+
+                                           if (isCurrentWeek) {
+                                               try {
+                                                   const daysPassed = differenceInDays(startOfDay(new Date()), parseISO(week.start_date)) + 1;
+                                                   if (daysPassed < 4) {
+                                                       label = "Progress (so far):";
+                                                   }
+                                               } catch (e) {
+                                                   console.error("Error calculating days passed in week:", e);
+                                               }
+                                           }
+
+                                           if (weeklyConsistency !== null) {
+                                               return (
+                                                   <Badge variant="secondary" className="text-xs font-normal hidden md:inline-flex">
+                                                       {label} {weeklyConsistency}%
+                                                   </Badge>
+                                               );
+                                           }
+                                           return null;
+                                       })()}
                                    {isCurrentWeek && (
-                                        <Badge variant="default" className="text-xs mr-4">Current Week</Badge>
+                                            <Badge variant="default" className="text-xs">Current</Badge>
+                                       )}
+                                       {isPastWeek && (
+                                             <Badge variant="secondary" className="text-xs">Done</Badge>
                                    )}
+                                   </div>
                                 </div>
                             </AccordionTrigger>
-                            <AccordionContent className={cn("px-4 pb-3 pt-1 text-sm", isPastWeek && "line-through")}>
-                                <p className="leading-relaxed">{formatSummary(week.summary)}</p>
-                                {week.estimated_weekly_mileage && (
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        ~{week.estimated_weekly_mileage}
-                                    </p>
+                            <AccordionContent className={cn("px-4 pb-3 pt-1 border-t", isPastWeek ? "border-muted/60" : isCurrentWeek ? "border-primary/40" : "border-border")}>
+                                {week.weekly_focus && (
+                                     <p className="text-sm font-semibold mb-3 mt-1">{week.weekly_focus}</p>
                                 )}
+                                <ul className="space-y-2">
+                                    {week.days.map((day, dayIndex) => {
+                                        const dayStatus = getDayStatus(day.date);
+                                        const isPastDay = dayStatus === 'past';
+                                        const isTodayDay = dayStatus === 'today';
+                                        const isLoading = updatingDayDate === day.date;
+                                        const DayIcon = getWorkoutIcon(day.workout_type);
+
+                                        return (
+                                            <li key={day.date} className={cn(
+                                                "flex items-start space-x-3 p-2 rounded-md transition-colors bg-card",
+                                                isPastDay && !isTodayDay && "opacity-60",
+                                                isTodayDay && "bg-secondary/50 ring-1 ring-primary/50",
+                                                isLoading ? "shadow-lg" : "",
+                                                "hover:bg-muted/40"
+                                            )}>
+                                                {/* Status Buttons */}
+                                                <div 
+                                                    className="flex flex-col items-center pt-1 space-y-1 w-6 flex-shrink-0"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    onTouchStart={(e) => e.stopPropagation()}
+                                                >
+                                                    {isLoading ? (
+                                                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                                    ) : (
+                                                        <>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <button
+                                                                        onClick={(e) => {e.stopPropagation(); handleUpdateStatus(day.date, 'completed');}}
+                                                                        disabled={isLoading}
+                                                                        className={cn("rounded-full disabled:opacity-50", day.status === 'completed' ? "text-green-600" : "text-muted-foreground hover:text-green-500")}
+                                                                    >
+                                                                        <CheckCircle2 className="h-4 w-4" />
+                                                                    </button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent side="left"><p>Mark as Completed</p></TooltipContent>
+                                                            </Tooltip>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <button
+                                                                        onClick={(e) => {e.stopPropagation(); handleUpdateStatus(day.date, 'skipped');}}
+                                                                        disabled={isLoading}
+                                                                        className={cn("rounded-full disabled:opacity-50", day.status === 'skipped' ? "text-red-600" : "text-muted-foreground hover:text-red-500")}
+                                                                    >
+                                                                        <XCircle className="h-4 w-4" />
+                                                                    </button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent side="left"><p>Mark as Skipped</p></TooltipContent>
+                                                            </Tooltip>
+                                                            {(day.status === 'completed' || day.status === 'skipped') && (
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <button
+                                                                            onClick={(e) => {e.stopPropagation(); handleUpdateStatus(day.date, 'pending');}}
+                                                                            disabled={isLoading}
+                                                                            className="rounded-full text-muted-foreground/60 hover:text-muted-foreground disabled:opacity-50"
+                                                                        >
+                                                                            <Circle className="h-3 w-3" />
+                                                                        </button>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent side="left"><p>Reset to Pending</p></TooltipContent>
+                                                                </Tooltip>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </div>
+
+                                                {/* Main Content Area (Icon, Day, Details) - Takes up remaining space */} 
+                                                <div 
+                                                    className="flex-grow flex items-start space-x-3 cursor-pointer" 
+                                                    onClick={() => handleViewDetails(day)}
+                                                >
+                                                    {/* Icon and Day of Week */}
+                                                    <div className={cn("mt-1 flex-shrink-0 flex flex-col items-center w-12", isTodayDay && "font-semibold")}>
+                                                        <DayIcon className={cn("h-5 w-5")} />
+                                                        <span className="text-xs mt-0.5 text-muted-foreground">{day.day_of_week.substring(0,3)}</span>
+                                                    </div>
+
+                                                    {/* Workout Details */}
+                                                    <div className="flex-grow">
+                                                        <p className={cn("text-sm font-medium leading-snug", isTodayDay && "font-semibold")}>
+                                                            {day.description}
+                                                        </p>
+                                                        <div className="text-xs text-muted-foreground space-x-2 mt-0.5">
+                                                            {day.distance && <span>{day.distance}</span>}
+                                                            {day.duration && <span>{day.duration}</span>}
+                                                            {day.intensity && <Badge variant="outline" className="text-xs font-normal">{day.intensity}</Badge>}
+                                                        </div>
+                                                         {day.notes && day.notes.length > 0 && (
+                                                            <ul className="list-disc list-inside text-xs text-muted-foreground/80 mt-1 pl-1">
+                                                                {day.notes.map((note, idx) => <li key={idx}>{note}</li>)}
+                                                            </ul>
+                                                         )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Shift Buttons Area (Aligned to the right) */} 
+                                                <div className="flex flex-col space-y-0.5 flex-shrink-0 ml-2"> {/* Vertical column for buttons */} 
+                                                                        {/* Shift Up Button */}
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-40"
+                                                                            onClick={(e) => {e.stopPropagation(); handleShiftWorkout(weekIndex, dayIndex, 'up');}}
+                                                                            disabled={dayIndex === 0} // Only disable based on position
+                                                                            aria-label="Shift workout up"
+                                                                        >
+                                                                            <ChevronUp className="h-4 w-4" />
+                                                                        </Button>
+                                                                        {/* Shift Down Button */}
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-40"
+                                                                            onClick={(e) => {e.stopPropagation(); handleShiftWorkout(weekIndex, dayIndex, 'down');}}
+                                                                            disabled={dayIndex === 6} // Only disable based on position
+                                                                            aria-label="Shift workout down"
+                                                                        >
+                                                                            <ChevronDown className="h-4 w-4" />
+                                                                        </Button>
+                                                                </div>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
                             </AccordionContent>
                         </AccordionItem>
                     );
                 })}
               </Accordion>
 
-              {plan.notes && plan.notes.length > 0 && (
-                  <div className="mt-6 p-3 border rounded-md bg-muted text-muted-foreground">
+              {/* Overall Coach Notes */}
+              {plan.overall_notes && plan.overall_notes.length > 0 && (
+                  <div className="mt-6 p-3 border rounded-md bg-muted/80 text-muted-foreground">
                       <h4 className="font-semibold text-sm mb-2 flex items-center">
-                          <Info className="h-4 w-4 mr-2" /> Coach Notes
+                          <Info className="h-4 w-4 mr-2 flex-shrink-0" /> Coach Notes
                       </h4>
                       <ul className="list-disc list-inside space-y-1 text-xs">
-                          {plan.notes.map((note, index) => (
+                          {plan.overall_notes.map((note, index) => (
                               <li key={index}>{note}</li>
                           ))}
                       </ul>
                   </div>
               )}
           </div> {/* End padding div for accordion/notes */}
+
+          {/* Render the Detail Modal */}
+          <WorkoutDetailModal 
+              isOpen={isDetailModalOpen} 
+              onOpenChange={setIsDetailModalOpen} 
+              workout={selectedWorkout} 
+          />
         </div>
     </TooltipProvider>
   );
-} 
+} ;

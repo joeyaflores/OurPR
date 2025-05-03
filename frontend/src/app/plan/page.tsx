@@ -7,9 +7,9 @@ import { RaceCard } from '@/components/onboarding/RaceCard'; // Assuming RaceCar
 import type { Race } from '@/lib/apiClient'; // Or your correct Race type path
 import type { PlannedRaceDetail } from '@/types/planned_race'; // <-- Import the new type
 import type { UserPr } from '@/types/user_pr'; // <-- Import UserPr type
-import type { TrainingPlanOutline } from '@/types/training_plan'; // <-- Import TrainingPlanOutline type
+import type { TrainingPlanOutline, DetailedTrainingPlan } from '@/types/training_plan'; // <-- Import TrainingPlanOutline type
 import { Skeleton } from "@/components/ui/skeleton"; // For loading state
-import { AlertCircle, Loader2, Save, Info } from 'lucide-react'; // For error state & Save icon
+import { AlertCircle, Loader2, Save, Info, Trash2 } from 'lucide-react'; // For error state & Save icon
 import {
     Dialog,
     DialogContent,
@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button"; // Import Button
 import { TrainingPlanDisplay } from '@/components/plan/TrainingPlanDisplay'; // <-- Import the display component
 import { toast } from "sonner"; // <-- Correct toast import
+import { motion, AnimatePresence } from 'framer-motion'; // <-- Import framer-motion
 import { 
     differenceInDays, 
     differenceInWeeks, 
@@ -36,6 +37,19 @@ import {
 
 // Add API Base URL (consider moving to a config file or env var)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
+// --- Loading Messages for Plan Generation ---
+const LOADING_MESSAGES = [
+    "Analyzing race details...",
+    "Considering your PR...",
+    "Mapping out weekly mileage...",
+    "Scheduling key workouts...",
+    "Adding rest and recovery...",
+    "Tailoring progressions...",
+    "Finalizing your plan...",
+];
+const MESSAGE_INTERVAL = 2500; // ms between messages
+// ------------------------------------------
 
 // Helper function to format seconds into HH:MM:SS or MM:SS
 const formatTime = (totalSeconds: number): string => {
@@ -66,11 +80,15 @@ export default function MyPlanPage() {
     const [isPlanGenerating, setIsPlanGenerating] = useState(false);
     const [planGenerationError, setPlanGenerationError] = useState<string | null>(null);
     const [selectedRaceIdForPlan, setSelectedRaceIdForPlan] = useState<string | number | null>(null);
-    const [currentPlanOutline, setCurrentPlanOutline] = useState<TrainingPlanOutline | null>(null);
+    const [currentPlanOutline, setCurrentPlanOutline] = useState<DetailedTrainingPlan | null>(null);
     const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
     const [planWasJustGenerated, setPlanWasJustGenerated] = useState(false); // <-- Track if plan in modal is new
     const [isViewingPlan, setIsViewingPlan] = useState(false); // <-- Track view loading state
     const [isSavingPlan, setIsSavingPlan] = useState(false); // <-- Track save loading state
+    const [isDeletingPlan, setIsDeletingPlan] = useState(false); // <-- Track delete loading state
+    const [raceIdBeingDeleted, setRaceIdBeingDeleted] = useState<string | number | null>(null); // <-- Track which plan is deleting
+    const [isOldPlanFormatError, setIsOldPlanFormatError] = useState(false); // <-- State for old format error
+    const [loadingMessageIndex, setLoadingMessageIndex] = useState(0); // State for animated message
 
     // Function to handle removal from the page's state
     const handleRaceRemoved = (removedRaceId: string | number) => {
@@ -173,6 +191,30 @@ export default function MyPlanPage() {
         fetchUserAndPlanAndPrs();
     }, [supabase]); // Re-run if supabase client instance changes
 
+    // Effect for cycling loading messages
+    useEffect(() => {
+        let intervalId: NodeJS.Timeout | null = null;
+
+        if (isPlanGenerating) {
+            // Start cycling messages
+            intervalId = setInterval(() => {
+                setLoadingMessageIndex(prevIndex => 
+                    (prevIndex + 1) % LOADING_MESSAGES.length
+                );
+            }, MESSAGE_INTERVAL);
+        } else {
+            // Reset index when not generating
+            setLoadingMessageIndex(0);
+        }
+
+        // Cleanup function to clear interval
+        return () => {
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
+        };
+    }, [isPlanGenerating]); // Dependency: run when generation state changes
+
     // --- Function to handle plan generation request --- 
     const handleGeneratePlanRequest = async (raceId: string | number) => {
         // console.log(`Requesting plan generation for race ID: ${raceId}`);
@@ -211,7 +253,7 @@ export default function MyPlanPage() {
                 throw new Error(errorDetail);
             }
 
-            const planData: TrainingPlanOutline = await response.json();
+            const planData: DetailedTrainingPlan = await response.json();
             setCurrentPlanOutline(planData);
             setPlanWasJustGenerated(true); // Set flag indicating this plan is new
             // console.log("Successfully generated plan:", planData);
@@ -231,11 +273,12 @@ export default function MyPlanPage() {
         // console.log(`Requesting view of saved plan for race ID: ${raceId}`);
         setIsViewingPlan(true);
         setPlanGenerationError(null);
+        setIsOldPlanFormatError(false); // <-- Reset old format error state
         setCurrentPlanOutline(null);
-        setSelectedRaceIdForPlan(raceId); // Track which card is loading
-        setIsPlanModalOpen(true); // Open modal immediately to show loading
-        setPlanWasJustGenerated(false); // This plan is not new
-        setIsPlanGenerating(false); // Ensure generate state is off
+        setSelectedRaceIdForPlan(raceId);
+        setIsPlanModalOpen(true);
+        setPlanWasJustGenerated(false);
+        setIsPlanGenerating(false);
 
         const { data: { session } } = await supabase.auth.getSession();
         const accessToken = session?.access_token;
@@ -250,34 +293,53 @@ export default function MyPlanPage() {
         const url = `${API_BASE_URL}/api/users/me/races/${raceId}/generated-plan`;
 
         try {
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: { 'Authorization': `Bearer ${accessToken}` },
-            });
+            const response = await fetch(url, { method: 'GET', headers: { 'Authorization': `Bearer ${accessToken}` } });
 
             if (!response.ok) {
                  let errorDetail = `API error: ${response.status}`;
+                 let isOldFormat = false;
+                 if (response.status === 409) { // <-- Check for our specific status code
+                     isOldFormat = true;
+                 }
+                 // Try to get detail message regardless
+                 try {
+                     const errorData = await response.json();
+                     errorDetail = errorData.detail || errorDetail;
+                 } catch { /* Ignore */ }
+                 
+                 // If it's the old format, set specific state
+                 if (isOldFormat) {
+                     setIsOldPlanFormatError(true);
+                     setPlanGenerationError(errorDetail); // Use the message from API
+                     setCurrentPlanOutline(null); // Ensure no plan is displayed
+                     setIsViewingPlan(false); // Stop loading indicator
+                     return; // Stop further processing
+                 }
+                 // Handle other errors (like 404)
                  if (response.status === 404) {
                      errorDetail = "No saved plan found for this race. You can generate one!";
-                 } else {
-                     try {
-                         const errorData = await response.json();
-                         errorDetail = errorData.detail || errorDetail;
-                     } catch { /* Ignore */ }
                  }
                  throw new Error(errorDetail);
             }
 
-            const planData: TrainingPlanOutline = await response.json();
+            // If response.ok (meaning 200 OK)
+            const planData: DetailedTrainingPlan = await response.json();
             setCurrentPlanOutline(planData);
+            setIsOldPlanFormatError(false); // Ensure old format state is false on success
              // console.log("Successfully fetched saved plan:", planData);
 
         } catch (e: any) {
-            console.error("Failed to fetch saved training plan:", e);
-            setPlanGenerationError(e.message || "An unexpected error occurred while fetching the saved plan.");
-            setCurrentPlanOutline(null); 
+            // Only set general error if it wasn't the old format error handled above
+            if (!isOldPlanFormatError) { 
+                console.error("Failed to fetch saved training plan:", e);
+                setPlanGenerationError(e.message || "An unexpected error occurred while fetching the saved plan.");
+                setCurrentPlanOutline(null);
+            }
         } finally {
-            setIsViewingPlan(false);
+            // Only stop loading if it wasn't the old format error (already stopped loading there)
+            if (!isOldPlanFormatError) {
+                setIsViewingPlan(false);
+            }
         }
     };
 
@@ -346,6 +408,61 @@ export default function MyPlanPage() {
              // Keep modal open to show error or let user retry?
         } finally { // This finally now correctly belongs to the outer try
             setIsSavingPlan(false);
+        }
+    };
+
+    // --- Function to handle deleting a saved plan --- 
+    const handleDeletePlanRequest = async (raceId: string | number) => {
+        setRaceIdBeingDeleted(raceId); // Show loading state indicator (optional, add to RaceCard if needed)
+        setIsDeletingPlan(true);
+        // console.log(`Attempting to delete plan for race ID: ${raceId}`);
+
+        const { data: { session } } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
+
+        if (!accessToken) {
+            toast.error("Authentication error: Cannot delete plan.");
+            setIsDeletingPlan(false);
+            setRaceIdBeingDeleted(null);
+            return;
+        }
+
+        const url = `${API_BASE_URL}/api/users/me/races/${raceId}/generated-plan`;
+
+        try {
+            const response = await fetch(url, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${accessToken}` },
+            });
+
+            // Check for non-204 success codes or error codes
+            if (!response.ok && response.status !== 204) {
+                 let errorDetail = `API error: ${response.status}`;
+                 try {
+                     const errorData = await response.json();
+                     errorDetail = errorData.detail || errorDetail;
+                 } catch { /* Ignore if error body is not JSON */ }
+                 throw new Error(errorDetail);
+            }
+
+            // If successful (204 No Content or potentially other 2xx)
+            toast.success("Training plan deleted successfully!");
+
+            // Update local state: set has_generated_plan to false for this race
+            setPlannedRaces(currentRaces => 
+                currentRaces.map(race => 
+                    race.id === raceId 
+                        ? { ...race, has_generated_plan: false } 
+                        : race
+                )
+            );
+
+        } catch (e: any) {
+            console.error("Failed to delete training plan:", e);
+            toast.error("Failed to delete plan", { description: e.message });
+        } finally {
+            setIsDeletingPlan(false);
+            setRaceIdBeingDeleted(null);
         }
     };
 
@@ -473,6 +590,7 @@ export default function MyPlanPage() {
                             isPrOfficial={raceWithDetails.isPrOfficial} // <-- Pass PR status
                             onGeneratePlanRequest={handleGeneratePlanRequest}
                             onViewPlanRequest={handleViewPlanRequest}
+                            onDeletePlanRequest={handleDeletePlanRequest} // <-- Pass delete handler
                             isGeneratingPlan={selectedRaceIdForPlan === raceWithDetails.id && isPlanGenerating}
                             isViewingPlan={selectedRaceIdForPlan === raceWithDetails.id && isViewingPlan}
                         />
@@ -496,18 +614,55 @@ export default function MyPlanPage() {
                     </DialogHeader>
 
                     {/* Modal Content Area - Reduce max height */}
-                    <div className="mt-4 max-h-[60vh] overflow-y-auto pr-2"> 
-                        {(isPlanGenerating || isViewingPlan) && !planGenerationError && (
-                            <div className="flex items-center justify-center p-8">
-                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                                <span className="ml-3">{isPlanGenerating ? "Generating your plan..." : "Loading your plan..."}</span>
+                    <div className="mt-4 max-h-[60vh] overflow-y-auto pr-2">
+                        {/* Loading Indicator */}
+                        {(isPlanGenerating || isViewingPlan) && !planGenerationError && !isOldPlanFormatError && (
+                            <div className="flex items-center justify-center p-8 min-h-[80px]"> {/* Added min-h for layout consistency */}
+                                <Loader2 className="h-8 w-8 animate-spin text-primary flex-shrink-0" />
+                                {isPlanGenerating ? (
+                                    <AnimatePresence mode="wait">
+                                        <motion.span
+                                            key={loadingMessageIndex} // Change key to trigger animation
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: -10 }}
+                                            transition={{ duration: 0.3 }}
+                                            className="ml-3 text-center"
+                                        >
+                                            {LOADING_MESSAGES[loadingMessageIndex]}
+                                        </motion.span>
+                                    </AnimatePresence>
+                                ) : (
+                                    <span className="ml-3">Loading your plan...</span> // Keep static for viewing
+                                )}
                             </div>
                         )}
                         
-                        {planGenerationError && (
-                            <div className="text-destructive bg-destructive/10 p-3 rounded-md text-center">
-                                <p>Error: {planGenerationError}</p>
-                                {planGenerationError.includes("404") && !planWasJustGenerated && (
+                        {/* Error Display (Includes Old Format Message) */} 
+                        {(planGenerationError || isOldPlanFormatError) && (
+                            <div className="text-destructive bg-destructive/10 p-4 rounded-md text-center space-y-2">
+                                <p className="font-medium">{isOldPlanFormatError ? "Outdated Plan Format" : "Error"}</p>
+                                <p className="text-sm">{planGenerationError || "An unexpected error occurred."}</p>
+                                {/* Show Delete/Regenerate button only for old format error */}
+                                {isOldPlanFormatError && selectedRaceIdForPlan && (
+                                    <Button
+                                        variant="destructive"
+                                        size="sm"
+                                        className="mt-3"
+                                        onClick={async () => {
+                                            // Optionally add loading state here
+                                            await handleDeletePlanRequest(selectedRaceIdForPlan); // Wait for delete
+                                            // Check if deletion was successful before regenerating?
+                                            // For simplicity now, just trigger generation after delete attempt
+                                            setIsOldPlanFormatError(false); // Clear old format error
+                                            handleGeneratePlanRequest(selectedRaceIdForPlan); // Trigger generation
+                                        }}
+                                    >
+                                        <Trash2 className="mr-2 h-4 w-4" /> Delete and Regenerate Plan
+                                    </Button>
+                                )}
+                                {/* Original button for 404 error */}
+                                {planGenerationError?.includes("No saved plan found") && !isOldPlanFormatError && (
                                     <Button 
                                         variant="link" 
                                         className="mt-2 h-auto p-0 text-destructive" 
@@ -524,27 +679,27 @@ export default function MyPlanPage() {
                             </div>
                         )}
 
-                        {currentPlanOutline && !planGenerationError && (
+                        {currentPlanOutline && !planGenerationError && !isOldPlanFormatError && (
                             // Find the selected race to pass its date and PR
                             (() => {
                                 const selectedRace = racesWithDetails.find(r => r.id === selectedRaceIdForPlan);
-                                if (selectedRace?.date) {
+                                if (selectedRace) {
                                     return (
                                         <TrainingPlanDisplay 
                                             plan={currentPlanOutline} 
-                                            raceDate={selectedRace.date} 
-                                            userPrString={selectedRace.userPr} // <-- Pass the PR string
+                                            raceId={selectedRace.id}
+                                            userPrString={selectedRace.userPr}
                                         />
                                     );
                                 }
                                 // Handle case where race or date isn't found (should not happen if plan exists)
-                                return <p className="text-destructive text-center">Error: Could not find race date for this plan.</p>; 
+                                return <p className="text-destructive text-center">Error: Could not find selected race details.</p>; 
                             })()
                         )}
                     </div>
 
                     {/* Modal Footer Actions */}
-                     {currentPlanOutline && !planGenerationError && (planWasJustGenerated || true /* Allow re-saving? */) && (
+                     {currentPlanOutline && !planGenerationError && !isOldPlanFormatError && (planWasJustGenerated || true /* Allow re-saving? */) && (
                          <div className="mt-6 flex justify-end gap-2 border-t pt-4">
                              <DialogClose asChild>
                                  <Button variant="outline">Close</Button>
