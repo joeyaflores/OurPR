@@ -560,7 +560,7 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                        )}
                                        {isPastWeek && (
                                              <Badge variant="secondary" className="text-xs">Done</Badge>
-                                       )}
+                                   )}
                                    </div>
                                 </div>
                             </AccordionTrigger>

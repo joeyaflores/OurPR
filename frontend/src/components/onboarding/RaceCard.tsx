@@ -5,12 +5,23 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { Race } from '@/lib/apiClient'; // Import the Race type
-import { ExternalLink, CalendarDays, Thermometer, BarChart, Mountain, PlusCircle, CheckCircle, AlertCircle, Trash2, Trophy, Clock, Flag, Rocket, Eye } from 'lucide-react'; // Icons
+import { ExternalLink, CalendarDays, Thermometer, BarChart, Mountain, PlusCircle, CheckCircle, AlertCircle, Trash2, Trophy, Clock, Flag, Rocket, Eye, AlertTriangle } from 'lucide-react'; // Icons
 import { createClient } from '@/lib/supabase/client'; // Import Supabase client
 import type { User } from '@supabase/supabase-js';
 import { toast } from "sonner"; // Import toast
 import { Progress } from "@/components/ui/progress"; // Import Progress
 import { cn } from "@/lib/utils"; // Import cn for conditional classes
+import { 
+    AlertDialog, 
+    AlertDialogAction, 
+    AlertDialogCancel, 
+    AlertDialogContent, 
+    AlertDialogDescription, 
+    AlertDialogFooter, 
+    AlertDialogHeader, 
+    AlertDialogTitle, 
+    AlertDialogTrigger 
+} from "@/components/ui/alert-dialog";
 
 // Action States for the button
 type ActionState = 'idle' | 'loading' | 'success' | 'error';
@@ -37,6 +48,7 @@ interface RaceCardProps {
   isPrOfficial?: boolean | null; // <-- Add prop for PR official status
   onSelect?: (raceId: string | number) => void;
   onRemove?: (raceId: string | number) => void;
+  onDeletePlanRequest?: (raceId: string | number) => void; // <-- Add callback prop for delete request
 }
 
 // Add API Base URL (consider moving to a config file)
@@ -59,7 +71,8 @@ export function RaceCard({
     totalPlanWeeks,
     isPrOfficial,
     onSelect,
-    onRemove
+    onRemove,
+    onDeletePlanRequest
 }: RaceCardProps) { 
     const supabase = createClient();
     const [user, setUser] = useState<User | null>(null);
@@ -68,6 +81,7 @@ export function RaceCard({
     // State to hold the IDs of races currently in the user's plan
     const [plannedRaceIds, setPlannedRaceIds] = useState<Set<string | number>>(new Set());
     const [isPlanLoading, setIsPlanLoading] = useState(true); // Loading state for the plan itself
+    const [isRemoving, setIsRemoving] = useState(false);
 
     // Get user session and plan state on mount
     useEffect(() => {
@@ -455,6 +469,41 @@ export function RaceCard({
                         <span className="sr-only">Remove from Plan</span>
                     </Button>
                  </div>
+            )}
+
+            {/* Delete Plan Button (Show only if a plan exists) */}
+            {hasSavedPlan && onDeletePlanRequest && (
+                 <AlertDialog>
+                     <AlertDialogTrigger asChild>
+                         <Button 
+                             variant="destructive"
+                             size="sm"
+                             className="col-start-2" // Position in the second column
+                             disabled={isGeneratingPlan || isViewingPlan} // Disable if other actions are in progress
+                         >
+                             <Trash2 className="mr-2 h-4 w-4" /> Delete Plan
+                         </Button>
+                     </AlertDialogTrigger>
+                     <AlertDialogContent>
+                         <AlertDialogHeader>
+                             <AlertDialogTitle className="flex items-center">
+                                 <AlertTriangle className="h-5 w-5 mr-2 text-destructive"/> Are you absolutely sure?
+                                </AlertDialogTitle>
+                             <AlertDialogDescription>
+                                 This action cannot be undone. This will permanently delete the generated training plan associated with the <strong>{race.name}</strong>.
+                             </AlertDialogDescription>
+                         </AlertDialogHeader>
+                         <AlertDialogFooter>
+                             <AlertDialogCancel>Cancel</AlertDialogCancel>
+                             <AlertDialogAction 
+                                 onClick={() => onDeletePlanRequest(race.id)}
+                                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                             >
+                                    Delete Plan
+                                </AlertDialogAction>
+                         </AlertDialogFooter>
+                     </AlertDialogContent>
+                 </AlertDialog>
             )}
         </CardFooter>
     </Card>
