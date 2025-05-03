@@ -35,6 +35,8 @@ import {
     CheckCheck,    // CheckCheck icon
     ChevronUp,     // <-- Add Up Arrow
     ChevronDown,   // <-- Add Down Arrow
+    CalendarMinus,
+    CalendarPlus,
 } from "lucide-react";
 import { 
     parseISO, 
@@ -113,9 +115,11 @@ interface TrainingPlanDisplayProps {
   raceId: string | number;
   onPlanUpdate?: (updatedPlan: DetailedTrainingPlan) => void;
   userPrString?: string | null; // Keep for displaying personalization note if available
+  isGoogleConnected: boolean;
+  onPlanRefetchRequired: (raceId: string | number) => void;
 }
 
-export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, userPrString }: TrainingPlanDisplayProps) {
+export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, userPrString, isGoogleConnected, onPlanRefetchRequired }: TrainingPlanDisplayProps) {
     // Local state to manage the plan, allowing updates without full page reload
     const [plan, setPlan] = useState<DetailedTrainingPlan>(initialPlan);
     // State to track which day is currently being updated
@@ -123,9 +127,12 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
     // State for managing the detail modal
     const [selectedWorkout, setSelectedWorkout] = useState<DailyWorkout | null>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+    // --- State for Calendar Sync/Remove Loading ---
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [isRemoving, setIsRemoving] = useState(false);
+    // -------------------------------------------
 
     // Update local state if the initial plan prop changes
-    // This is important if the parent component refetches the plan
     useEffect(() => {
         setPlan(initialPlan);
     }, [initialPlan]);
@@ -237,6 +244,12 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
       return Math.round((completedInWeek / plannedInWeek) * 100);
   };
   // -------------------------------------
+
+  // --- Determine if plan is already synced ---
+  const isPlanSyncedToGoogle = plan.weeks.some(week => 
+      week.days.some(day => !!day.google_event_id)
+  );
+  // -----------------------------------------
 
   // --- Function to handle status update API call --- 
   const handleUpdateStatus = async (dayDate: string, newStatus: DailyWorkout['status']) => {
@@ -445,6 +458,87 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
       });
   };
 
+  // --- Calendar Sync/Remove Handlers (Internal state management) ---
+  const handleSyncPlan = async () => {
+      setIsSyncing(true);
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+          toast.error("Authentication error.");
+          setIsSyncing(false);
+          return;
+      }
+      
+      const url = `${API_BASE_URL}/api/users/me/google-calendar/sync-plan/${raceId}`;
+      try {
+          const response = await fetch(url, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${accessToken}` },
+          });
+          const result = await response.json(); // Get JSON response
+          if (!response.ok) {
+              throw new Error(result.detail || `API error: ${response.status}`);
+          }
+          toast.success(result.message || "Plan synced to Google Calendar!");
+          // TODO: Refetch the plan to get updated google_event_ids
+          // For now, manually update the flag (less accurate)
+          // A better approach would be to trigger a refetch via onPlanUpdate callback
+          onPlanRefetchRequired(raceId);
+          // --- Remove Simulation ---
+          // Simulate sync state change until refetch is implemented
+          // setPlan(prev => ({ ...prev, weeks: prev.weeks.map(w => ({ ...w, days: w.days.map(d => ({ ...d, google_event_id: d.google_event_id || (d.workout_type !== 'Rest' ? 'synced_placeholder' : null) })) })) }));
+
+      } catch (e: any) {
+          console.error("Failed to sync plan:", e);
+          toast.error("Sync Failed", { description: e.message });
+      } finally {
+          setIsSyncing(false);
+      }
+  };
+
+  const handleRemovePlan = async () => {
+      setIsRemoving(true);
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+          toast.error("Authentication error.");
+          setIsRemoving(false);
+          return;
+      }
+
+      const url = `${API_BASE_URL}/api/users/me/google-calendar/sync-plan/${raceId}`;
+      try {
+          const response = await fetch(url, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${accessToken}` },
+          });
+          // DELETE success is 204 No Content, or could be 200/202
+          if (!response.ok && response.status !== 204) {
+              let errorDetail = `API error: ${response.status}`;
+              try {
+                  const errorData = await response.json();
+                  errorDetail = errorData.detail || errorDetail;
+              } catch { /* Ignore */ }
+              throw new Error(errorDetail);
+          }
+          toast.success("Plan removed from Google Calendar.");
+          // TODO: Refetch the plan to clear google_event_ids
+          onPlanRefetchRequired(raceId);
+          // --- Remove Simulation ---
+           // Simulate removal state change until refetch is implemented
+          // setPlan(prev => ({ ...prev, weeks: prev.weeks.map(w => ({ ...w, days: w.days.map(d => ({ ...d, google_event_id: null })) })) }));
+
+      } catch (e: any) {
+          console.error("Failed to remove plan from calendar:", e);
+          toast.error("Removal Failed", { description: e.message });
+      } finally {
+          setIsRemoving(false);
+      }
+  };
+  // ---------------------------------------------------------------
+
   return (
     <TooltipProvider delayDuration={150}>
         <div className="space-y-4">
@@ -466,6 +560,67 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                       )}
                   </div>
               )}
+              {/* --- Google Calendar Buttons --- */}
+              {/* Logic moved slightly: Button shown conditionally based on sync status, 
+                   enabled/disabled based on connection status */}
+              <div className="mt-2 flex gap-2">
+                  {isPlanSyncedToGoogle ? (
+                      // --- Remove Button (Only shown if synced, implies connection exists) ---
+                      <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={handleRemovePlan}
+                          disabled={isRemoving || isSyncing} // Disable during any operation
+                      >
+                          {isRemoving ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                              <CalendarMinus className="mr-2 h-4 w-4" />
+                          )}
+                          Remove from Calendar
+                      </Button>
+                  ) : (
+                      // --- Add Button (Always shown if not synced) ---
+                      isGoogleConnected ? (
+                         // --- Enabled Add Button ---
+                         <Button 
+                             variant="outline" 
+                             size="sm" 
+                             onClick={handleSyncPlan}
+                             disabled={isSyncing || isRemoving} // Disable during any operation
+                         >
+                             {isSyncing ? (
+                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                             ) : (
+                                 <CalendarPlus className="mr-2 h-4 w-4" />
+                             )}
+                             Add to Google Calendar
+                         </Button>
+                      ) : (
+                          // --- Disabled Add Button with Tooltip ---
+                          <Tooltip>
+                             <TooltipTrigger asChild>
+                                 {/* Span needed for Tooltip to work on disabled button */}
+                                 <span tabIndex={0}> 
+                                     <Button 
+                                         variant="outline" 
+                                         size="sm" 
+                                         disabled // Always disabled if not connected
+                                         className="cursor-not-allowed"
+                                     >
+                                         <CalendarPlus className="mr-2 h-4 w-4" />
+                                         Add to Google Calendar
+                                     </Button>
+                                 </span>
+                             </TooltipTrigger>
+                             <TooltipContent>
+                                 <p>Please connect your Google Calendar first.</p>
+                             </TooltipContent>
+                         </Tooltip>
+                      )
+                  )}
+              </div>
+              {/* ----------------------------- */}
                {/* --- Overall Adherence --- */}
                {overallAdherence !== null && (
                     <div className="flex items-center text-sm text-muted-foreground pt-1">

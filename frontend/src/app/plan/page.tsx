@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
 import { RaceCard } from '@/components/onboarding/RaceCard'; // Assuming RaceCard is here or adjust path
@@ -9,7 +9,7 @@ import type { PlannedRaceDetail } from '@/types/planned_race'; // <-- Import the
 import type { UserPr } from '@/types/user_pr'; // <-- Import UserPr type
 import type { TrainingPlanOutline, DetailedTrainingPlan } from '@/types/training_plan'; // <-- Import TrainingPlanOutline type
 import { Skeleton } from "@/components/ui/skeleton"; // For loading state
-import { AlertCircle, Loader2, Save, Info, Trash2 } from 'lucide-react'; // For error state & Save icon
+import { AlertCircle, Loader2, Save, Info, Trash2, Link as LinkIcon, CalendarPlus, CalendarMinus } from 'lucide-react'; // For error state & Save icon & Google Icons
 import {
     Dialog,
     DialogContent,
@@ -34,6 +34,13 @@ import {
     startOfWeek,
     addWeeks // <-- Import addWeeks
 } from 'date-fns'; // <-- Import date-fns functions
+import { useSearchParams } from 'next/navigation';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Add API Base URL (consider moving to a config file or env var)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -68,7 +75,8 @@ const formatTime = (totalSeconds: number): string => {
     }
   };
 
-export default function MyPlanPage() {
+// Define the actual content as a separate client component
+function PlanPageContent() {
     const supabase = createClient();
     const [user, setUser] = useState<User | null>(null);
     const [plannedRaces, setPlannedRaces] = useState<PlannedRaceDetail[]>([]); // <-- Use PlannedRaceDetail[]
@@ -89,6 +97,12 @@ export default function MyPlanPage() {
     const [raceIdBeingDeleted, setRaceIdBeingDeleted] = useState<string | number | null>(null); // <-- Track which plan is deleting
     const [isOldPlanFormatError, setIsOldPlanFormatError] = useState(false); // <-- State for old format error
     const [loadingMessageIndex, setLoadingMessageIndex] = useState(0); // State for animated message
+    // --- State for Google Connection ---
+    const [isGoogleConnected, setIsGoogleConnected] = useState(false); // Assume not connected initially
+    // ------------------------------------
+    // --- Get search params ---
+    const searchParams = useSearchParams();
+    // --------------------------
 
     // Function to handle removal from the page's state
     const handleRaceRemoved = (removedRaceId: string | number) => {
@@ -101,6 +115,16 @@ export default function MyPlanPage() {
     };
 
     useEffect(() => {
+        // --- Check for Google Connection Success on Load ---
+        const googleConnectedParam = searchParams.get('google_connected');
+        if (googleConnectedParam === 'true') {
+            toast.success("Successfully connected Google Account!");
+            setIsGoogleConnected(true); // Update state based on param
+            // Optionally remove the query param from URL without reload
+            // window.history.replaceState(null, '', window.location.pathname); 
+        }
+        // ----------------------------------------------------
+
         const fetchUserAndPlanAndPrs = async () => {
             setIsLoading(true);
             setError(null);
@@ -185,11 +209,16 @@ export default function MyPlanPage() {
                 setUserPrs([]);
             } finally {
                 setIsLoading(false);
+                // --- Call server status check AFTER fetching user data --- 
+                if (currentUser) { // Only check if user is logged in
+                    checkGoogleConnectionStatus();
+                }
+                // ---------------------------------------------------------
             }
         };
 
         fetchUserAndPlanAndPrs();
-    }, [supabase]); // Re-run if supabase client instance changes
+    }, [supabase, searchParams]); // Re-run if supabase client or search params change
 
     // Effect for cycling loading messages
     useEffect(() => {
@@ -411,6 +440,14 @@ export default function MyPlanPage() {
         }
     };
 
+    // --- Function to trigger refetch of a specific plan (used by display component) ---
+    const handlePlanRefetch = (raceIdToRefetch: string | number) => {
+        console.log(`[PlanPage] Refetch triggered for race ID: ${raceIdToRefetch}`);
+        // Reuse the existing view function to reload the plan data
+        handleViewPlanRequest(raceIdToRefetch);
+    };
+    // -------------------------------------------------------------------------------
+
     // --- Function to handle deleting a saved plan --- 
     const handleDeletePlanRequest = async (raceId: string | number) => {
         setRaceIdBeingDeleted(raceId); // Show loading state indicator (optional, add to RaceCard if needed)
@@ -535,9 +572,142 @@ export default function MyPlanPage() {
         };
     });
 
+    // --- Function to handle initiating Google OAuth flow ---
+    const handleConnectGoogle = async () => {
+        // Redirect the browser to the backend login endpoint
+        // window.location.href = `${API_BASE_URL}/api/auth/google/login`;
+
+        // --- New Fetch Logic --- 
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
+
+        if (!accessToken) {
+            toast.error("Authentication error. Please log in again.");
+            return;
+        }
+
+        // Indicate loading state if needed (optional)
+        // setIsGoogleConnectLoading(true);
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/auth/google/login`, {
+                method: 'GET', // Or POST if you change the backend
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                },
+            });
+
+            if (!response.ok) {
+                let errorDetail = `API error: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorDetail = errorData.detail || errorDetail;
+                } catch { /* Ignore */ }
+                throw new Error(errorDetail);
+            }
+
+            const data = await response.json();
+            if (data.authorization_url) {
+                // Redirect the user using the URL from the backend
+                window.location.href = data.authorization_url;
+            } else {
+                throw new Error("Could not get Google authorization URL from backend.");
+            }
+
+        } catch (e: any) {
+            console.error("Failed to initiate Google Connect:", e);
+            toast.error("Failed to connect Google Account", { description: e.message });
+        } finally {
+            // Reset loading state if needed
+            // setIsGoogleConnectLoading(false);
+        }
+        // ----------------------
+    };
+    // ------------------------------------------------------
+
+    // --- Function to check Google Connection Status (Server-Side) --- 
+    const checkGoogleConnectionStatus = async () => {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
+        let connected = false; // Default to false
+
+        if (accessToken) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/users/me/google-calendar/status`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    connected = data.isConnected;
+                } else {
+                    // Log error but assume not connected
+                    console.error("API error checking Google status:", response.status);
+                }
+            } catch (e) {
+                console.error("Network error checking Google connection status:", e);
+            }
+        }
+        
+        // Update state based on server check
+        setIsGoogleConnected(connected); 
+        console.log("[PlanPage] Google Connection Status from server:", connected);
+    };
+    // ------------------------------------------------------------------
+
+    // --- Function to handle DISCONNECTING Google Account --- 
+    const handleDisconnectGoogle = async () => {
+        // Add loading state maybe? setIsDisconnecting(true)
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
+
+        if (!accessToken) {
+            toast.error("Authentication error.");
+            // setIsDisconnecting(false)
+            return;
+        }
+
+        const url = `${API_BASE_URL}/api/users/me/google-calendar/connection`;
+
+        try {
+            const response = await fetch(url, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${accessToken}` },
+            });
+
+            if (!response.ok && response.status !== 204) {
+                let errorDetail = `API error: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorDetail = errorData.detail || errorDetail;
+                } catch { /* Ignore */ }
+                throw new Error(errorDetail);
+            }
+
+            // Success!
+            toast.success("Google Account disconnected.");
+            setIsGoogleConnected(false); // Update frontend state
+
+        } catch (e: any) {
+            console.error("Failed to disconnect Google Account:", e);
+            toast.error("Disconnect Failed", { description: e.message });
+        } finally {
+            // Reset loading state if needed
+            // setIsDisconnecting(false);
+        }
+    };
+    // ----------------------------------------------------------
+
     // --- Render component --- 
     return (
-        <div className="container mx-auto p-4 md:p-6">
+        <motion.div 
+            className="container mx-auto p-4 md:p-8 max-w-6xl" // Constrain width
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+        >
             <h1 className="text-2xl font-bold mb-6">My Training Plan</h1>
 
             {/* --- Add PR Logging Tip --- */}
@@ -546,6 +716,60 @@ export default function MyPlanPage() {
                 <span>Tip: Log your PRs on the Home page for a more personalized plan!</span>
             </div>
             {/* --- End PR Logging Tip --- */}
+
+            {/* --- Google Connection Button Area (Moved Here) --- */}
+            {!isLoading && !error && (
+                <div className="mb-6 p-4 border rounded-md flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4">
+                    {isGoogleConnected ? (
+                        <>
+                            <div className="flex items-center justify-center text-green-600 font-medium">
+                                <CalendarPlus className="h-5 w-5 mr-2" />
+                                <span>Google Calendar Connected</span>
+                            </div>
+                            <Button onClick={handleDisconnectGoogle} variant="outline" size="sm">
+                                <LinkIcon className="mr-2 h-4 w-4" />
+                                Disconnect
+                            </Button>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground">
+                                        <Info className="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-xs">
+                                    <p className="font-semibold mb-1">Google Calendar Sync</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Your account is connected. Add/Remove plans from your calendar using the buttons in the plan details modal.
+                                    </p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </>
+                    ) : (
+                        <div className="flex items-center justify-center gap-2">
+                            <Button onClick={handleConnectGoogle} variant="outline">
+                                <LinkIcon className="mr-2 h-4 w-4" />
+                                Connect Google Account
+                            </Button>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                                        <Info className="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-xs">
+                                    <p className="font-semibold mb-1">Sync with Google Calendar!</p>
+                                    <ul className="list-disc list-outside pl-4 text-xs text-muted-foreground space-y-1">
+                                        <li>View OurPR workouts in your main calendar.</li>
+                                        <li>Connect to add/remove your current plan easily.</li>
+                                        <li>Sync changes after editing or regenerating plans.</li>
+                                    </ul>
+                                </TooltipContent>
+                            </Tooltip>
+                        </div>
+                    )}
+                </div>
+            )}
+            {/* ------------------------------------------------ */}
 
             {/* Loading State */}
             {isLoading && (
@@ -593,6 +817,7 @@ export default function MyPlanPage() {
                             onDeletePlanRequest={handleDeletePlanRequest} // <-- Pass delete handler
                             isGeneratingPlan={selectedRaceIdForPlan === raceWithDetails.id && isPlanGenerating}
                             isViewingPlan={selectedRaceIdForPlan === raceWithDetails.id && isViewingPlan}
+                            isGoogleConnected={isGoogleConnected}
                         />
                     ))}
                 </div>
@@ -689,6 +914,8 @@ export default function MyPlanPage() {
                                             plan={currentPlanOutline} 
                                             raceId={selectedRace.id}
                                             userPrString={selectedRace.userPr}
+                                            isGoogleConnected={isGoogleConnected}
+                                            onPlanRefetchRequired={handlePlanRefetch}
                                         />
                                     );
                                 }
@@ -720,6 +947,65 @@ export default function MyPlanPage() {
                      )}
                 </DialogContent>
             </Dialog>
-        </div>
+        </motion.div>
     );
 }
+
+// Default export is now a simple Server Component that wraps the client component in Suspense
+export default function MyPlanPage() {
+    return (
+        <Suspense fallback={<PlanPageSkeleton />}> {/* Or any other suitable fallback */}
+            <PlanPageContent />
+        </Suspense>
+    );
+}
+
+// --- Skeleton Component for Suspense Fallback ---
+const PlanPageSkeleton = () => (
+    <div className="container mx-auto p-4 md:p-8 max-w-6xl animate-pulse">
+        <h1 className="text-3xl font-bold mb-6"><Skeleton className="h-8 w-1/3" /></h1>
+        
+        {/* Skeleton for PR Section */}
+        <div className="mb-8 p-6 bg-card rounded-lg shadow">
+            <h2 className="text-2xl font-semibold mb-4 flex items-center">
+                <Skeleton className="h-6 w-1/4 mr-2" /> <Info className="h-4 w-4 text-muted-foreground" />
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {[...Array(3)].map((_, i) => (
+                    <div key={i} className="p-3 bg-muted rounded">
+                        <Skeleton className="h-5 w-1/2 mb-1" />
+                        <Skeleton className="h-5 w-3/4" />
+                    </div>
+                ))}
+            </div>
+             <Skeleton className="h-10 w-32 mt-4" /> {/* Skeleton for Add PR button */}
+        </div>
+
+        {/* Skeleton for Google Connection Section */}
+         <div className="mb-8 p-6 bg-card rounded-lg shadow">
+             <h2 className="text-2xl font-semibold mb-4"><Skeleton className="h-6 w-1/4" /></h2>
+             <Skeleton className="h-10 w-40" />
+         </div>
+
+
+        {/* Skeleton for Planned Races Section */}
+        <div className="mb-8">
+            <h2 className="text-2xl font-semibold mb-4"><Skeleton className="h-6 w-1/4" /></h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                 {[...Array(2)].map((_, i) => (
+                    <div key={i} className="bg-card rounded-lg shadow overflow-hidden p-4 border border-border">
+                        <Skeleton className="h-6 w-3/4 mb-2" />
+                        <Skeleton className="h-4 w-1/2 mb-1" />
+                        <Skeleton className="h-4 w-1/3 mb-3" />
+                        <div className="flex space-x-2 mt-4">
+                            <Skeleton className="h-9 w-24" />
+                            <Skeleton className="h-9 w-24" />
+                             <Skeleton className="h-9 w-9 rounded-full" />
+                        </div>
+                    </div>
+                 ))}
+            </div>
+        </div>
+    </div>
+);
+// --- End Skeleton Component ---

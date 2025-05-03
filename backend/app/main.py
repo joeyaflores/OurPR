@@ -11,6 +11,7 @@ from .api import training_plans # <-- Import the new router
 from .api import achievements # <-- Import the new achievements router
 from .api import workouts # <-- Import the new workouts router
 from .api import weekly_goals # <-- NEW: Import the weekly goals router
+from .api import google_calendar # <-- Import the new Google Calendar router module
 
 load_dotenv() # <-- Load environment variables from .env file
 
@@ -63,5 +64,12 @@ app.include_router(training_plans.router, prefix="/api") # <-- Add prefix="/api"
 app.include_router(achievements.router, prefix="/api") # <-- Add the achievements router
 app.include_router(workouts.router, prefix="/api") # <-- Add the workouts router
 app.include_router(weekly_goals.router, prefix="/api") # <-- NEW: Include the weekly goals router
+
+# --- Include Google Calendar Routers --- 
+# OAuth login/callback endpoints (no user-specific prefix needed)
+app.include_router(google_calendar.router, prefix="/api") 
+# Calendar sync endpoints (needs user context, mount under /users/me)
+app.include_router(google_calendar.calendar_router, prefix="/api/users/me")
+# --- End Google Calendar Routers --- 
 
 # Add other routers here later (e.g., auth) 
