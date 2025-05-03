@@ -30,7 +30,9 @@ import {
     CheckCircle2,  // Completed
     XCircle,       // Skipped
     Circle,        // Pending (or use default)
-    Loader2        // Loading state for update
+    Loader2,       // Loading state for update
+    Target,        // Target icon
+    CheckCheck,    // CheckCheck icon
 } from "lucide-react";
 import {
     parseISO,
@@ -172,6 +174,45 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
   }
   // --- End Calculation ---
 
+  // --- Calculate Overall Adherence --- 
+  const calculateOverallAdherence = (): number | null => {
+      if (!plan || !plan.weeks) return null;
+      
+      let totalPastPlanned = 0;
+      let totalCompleted = 0;
+      const today = startOfDay(new Date());
+
+      plan.weeks.forEach(week => {
+          week.days.forEach(day => {
+              try {
+                  const dayDate = parseISO(day.date);
+                  // Consider only days up to and including today
+                  if (dayDate <= today) {
+                      // Count non-rest days as planned
+                      if (day.workout_type !== 'Rest') {
+                          totalPastPlanned++;
+                          // Count completed days
+                          if (day.status === 'completed') {
+                              totalCompleted++;
+                          }
+                      }
+                  }
+              } catch (e) {
+                  console.error("Error parsing day date during adherence calculation:", e);
+              }
+          });
+      });
+
+      if (totalPastPlanned === 0) {
+          return null; // Avoid division by zero, return null if no past planned days
+      }
+
+      return Math.round((totalCompleted / totalPastPlanned) * 100);
+  };
+
+  const overallAdherence = calculateOverallAdherence();
+  // -------------------------------------
+
   // --- Function to handle status update API call --- 
   const handleUpdateStatus = async (dayDate: string, newStatus: DailyWorkout['status']) => {
       setUpdatingDayDate(dayDate); // Set loading state for this specific day
@@ -279,6 +320,14 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                       )}
                   </div>
               )}
+               {/* --- Overall Adherence --- */}
+               {overallAdherence !== null && (
+                    <div className="flex items-center text-sm text-muted-foreground pt-1">
+                        <CheckCheck className="h-4 w-4 mr-2 flex-shrink-0 text-green-600" />
+                        <span>Training Consistency: <strong>{overallAdherence}%</strong></span>
+                    </div>
+               )}
+               {/* ----------------------- */}
                {/* --- Personalization Info --- */}
                {/* Use plan.personalization_details if available */}
                {plan.personalization_details?.pr_used && (
