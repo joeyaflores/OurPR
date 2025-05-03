@@ -9,12 +9,34 @@ load_dotenv()  # Load environment variables from .env file
 
 url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
+# --- Add Service Role Key --- 
+service_role_key: str = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
 if not url or not key:
     raise ValueError("Supabase URL and Key must be set in the environment variables.")
+# --- Check Service Role Key --- 
+if not service_role_key:
+    # Decide how critical this is. For the callback, it IS critical.
+    print("Warning: SUPABASE_SERVICE_ROLE_KEY is not set. Operations requiring service role will fail.")
+    # raise ValueError("Supabase Service Role Key must be set for service operations.")
+
 
 # Base client initialized with URL and anon/service key
 supabase_base_client: Client = create_client(url, key)
+
+# --- Create a separate client instance for service role --- 
+# Avoid modifying the base client directly if it's used elsewhere with anon key
+supabase_service_client: Optional[Client] = None
+if service_role_key:
+    try:
+        # Create a new client instance specifically for service role
+        supabase_service_client = create_client(url, service_role_key)
+    except Exception as e:
+        print(f"Error creating Supabase service client: {e}")
+        # Handle error appropriately, maybe raise or log
+else:
+    # Handle case where service key is missing but code proceeds
+    pass
 
 def get_supabase_client(
     authorization: Annotated[Optional[str], Header()] = None
@@ -36,6 +58,18 @@ def get_supabase_client(
         # Catch potential errors during .auth() if any
         print(f"ERROR [get_supabase_client]: Failed to get authenticated client: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not initialize authenticated database client.")
+
+# --- New Dependency for Service Client --- 
+def get_supabase_service_client() -> Client:
+    """Dependency that provides a Supabase client configured with the Service Role Key."""
+    if not supabase_service_client:
+        # This happens if the service_role_key was missing or client creation failed
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
+            detail="Database service client is not available. Check server configuration."
+        )
+    return supabase_service_client
+# --- End New Dependency ---
 
 # Optional: Keep a way to get the base client if needed elsewhere (e.g., for admin tasks)
 def get_base_supabase_client() -> Client:

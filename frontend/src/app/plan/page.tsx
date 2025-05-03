@@ -9,7 +9,7 @@ import type { PlannedRaceDetail } from '@/types/planned_race'; // <-- Import the
 import type { UserPr } from '@/types/user_pr'; // <-- Import UserPr type
 import type { TrainingPlanOutline, DetailedTrainingPlan } from '@/types/training_plan'; // <-- Import TrainingPlanOutline type
 import { Skeleton } from "@/components/ui/skeleton"; // For loading state
-import { AlertCircle, Loader2, Save, Info, Trash2 } from 'lucide-react'; // For error state & Save icon
+import { AlertCircle, Loader2, Save, Info, Trash2, Link as LinkIcon, CalendarPlus, CalendarMinus } from 'lucide-react'; // For error state & Save icon & Google Icons
 import {
     Dialog,
     DialogContent,
@@ -34,6 +34,7 @@ import {
     startOfWeek,
     addWeeks // <-- Import addWeeks
 } from 'date-fns'; // <-- Import date-fns functions
+import { useSearchParams } from 'next/navigation';
 
 // Add API Base URL (consider moving to a config file or env var)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -89,6 +90,12 @@ export default function MyPlanPage() {
     const [raceIdBeingDeleted, setRaceIdBeingDeleted] = useState<string | number | null>(null); // <-- Track which plan is deleting
     const [isOldPlanFormatError, setIsOldPlanFormatError] = useState(false); // <-- State for old format error
     const [loadingMessageIndex, setLoadingMessageIndex] = useState(0); // State for animated message
+    // --- State for Google Connection ---
+    const [isGoogleConnected, setIsGoogleConnected] = useState(false); // Assume not connected initially
+    // ------------------------------------
+    // --- Get search params ---
+    const searchParams = useSearchParams();
+    // --------------------------
 
     // Function to handle removal from the page's state
     const handleRaceRemoved = (removedRaceId: string | number) => {
@@ -101,6 +108,16 @@ export default function MyPlanPage() {
     };
 
     useEffect(() => {
+        // --- Check for Google Connection Success on Load ---
+        const googleConnectedParam = searchParams.get('google_connected');
+        if (googleConnectedParam === 'true') {
+            toast.success("Successfully connected Google Account!");
+            setIsGoogleConnected(true); // Update state based on param
+            // Optionally remove the query param from URL without reload
+            // window.history.replaceState(null, '', window.location.pathname); 
+        }
+        // ----------------------------------------------------
+
         const fetchUserAndPlanAndPrs = async () => {
             setIsLoading(true);
             setError(null);
@@ -189,7 +206,7 @@ export default function MyPlanPage() {
         };
 
         fetchUserAndPlanAndPrs();
-    }, [supabase]); // Re-run if supabase client instance changes
+    }, [supabase, searchParams]); // Re-run if supabase client or search params change
 
     // Effect for cycling loading messages
     useEffect(() => {
@@ -411,6 +428,14 @@ export default function MyPlanPage() {
         }
     };
 
+    // --- Function to trigger refetch of a specific plan (used by display component) ---
+    const handlePlanRefetch = (raceIdToRefetch: string | number) => {
+        console.log(`[PlanPage] Refetch triggered for race ID: ${raceIdToRefetch}`);
+        // Reuse the existing view function to reload the plan data
+        handleViewPlanRequest(raceIdToRefetch);
+    };
+    // -------------------------------------------------------------------------------
+
     // --- Function to handle deleting a saved plan --- 
     const handleDeletePlanRequest = async (raceId: string | number) => {
         setRaceIdBeingDeleted(raceId); // Show loading state indicator (optional, add to RaceCard if needed)
@@ -535,6 +560,60 @@ export default function MyPlanPage() {
         };
     });
 
+    // --- Function to handle initiating Google OAuth flow ---
+    const handleConnectGoogle = async () => {
+        // Redirect the browser to the backend login endpoint
+        // window.location.href = `${API_BASE_URL}/api/auth/google/login`;
+
+        // --- New Fetch Logic --- 
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
+
+        if (!accessToken) {
+            toast.error("Authentication error. Please log in again.");
+            return;
+        }
+
+        // Indicate loading state if needed (optional)
+        // setIsGoogleConnectLoading(true);
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/auth/google/login`, {
+                method: 'GET', // Or POST if you change the backend
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                },
+            });
+
+            if (!response.ok) {
+                let errorDetail = `API error: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorDetail = errorData.detail || errorDetail;
+                } catch { /* Ignore */ }
+                throw new Error(errorDetail);
+            }
+
+            const data = await response.json();
+            if (data.authorization_url) {
+                // Redirect the user using the URL from the backend
+                window.location.href = data.authorization_url;
+            } else {
+                throw new Error("Could not get Google authorization URL from backend.");
+            }
+
+        } catch (e: any) {
+            console.error("Failed to initiate Google Connect:", e);
+            toast.error("Failed to connect Google Account", { description: e.message });
+        } finally {
+            // Reset loading state if needed
+            // setIsGoogleConnectLoading(false);
+        }
+        // ----------------------
+    };
+    // ------------------------------------------------------
+
     // --- Render component --- 
     return (
         <div className="container mx-auto p-4 md:p-6">
@@ -546,6 +625,25 @@ export default function MyPlanPage() {
                 <span>Tip: Log your PRs on the Home page for a more personalized plan!</span>
             </div>
             {/* --- End PR Logging Tip --- */}
+
+            {/* --- Google Connection Button Area (Moved Here) --- */}
+            {!isLoading && !error && (
+                 <div className="mb-6 text-center p-4 border rounded-md">
+                     {isGoogleConnected ? (
+                         <div className="flex items-center justify-center text-green-600">
+                              <CalendarPlus className="h-5 w-5 mr-2" />
+                              <span>Google Calendar Connected</span>
+                              {/* Optional: Add a disconnect button here */}
+                         </div>
+                     ) : (
+                         <Button onClick={handleConnectGoogle} variant="outline">
+                             <LinkIcon className="mr-2 h-4 w-4" />
+                             Connect Google Account
+                         </Button>
+                     )}
+                 </div>
+            )}
+            {/* ------------------------------------------------ */}
 
             {/* Loading State */}
             {isLoading && (
@@ -593,6 +691,7 @@ export default function MyPlanPage() {
                             onDeletePlanRequest={handleDeletePlanRequest} // <-- Pass delete handler
                             isGeneratingPlan={selectedRaceIdForPlan === raceWithDetails.id && isPlanGenerating}
                             isViewingPlan={selectedRaceIdForPlan === raceWithDetails.id && isViewingPlan}
+                            isGoogleConnected={isGoogleConnected}
                         />
                     ))}
                 </div>
@@ -689,6 +788,8 @@ export default function MyPlanPage() {
                                             plan={currentPlanOutline} 
                                             raceId={selectedRace.id}
                                             userPrString={selectedRace.userPr}
+                                            isGoogleConnected={isGoogleConnected}
+                                            onPlanRefetchRequired={handlePlanRefetch}
                                         />
                                     );
                                 }

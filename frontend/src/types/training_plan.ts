@@ -25,6 +25,7 @@ export interface DailyWorkout {
   intensity?: string; // Optional: e.g., "Easy", "Tempo", "Hard", "Conversational", "HR Zone 2"
   notes?: string[]; // Optional: Array of additional tips, instructions, or variations
   status: 'pending' | 'completed' | 'skipped'; // Status for user tracking
+  google_event_id?: string | null; // Optional: ID of the event created in Google Calendar
 }
 
 // Represents a single week within the training plan

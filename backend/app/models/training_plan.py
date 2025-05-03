@@ -28,6 +28,7 @@ class DailyWorkout(BaseModel):
     intensity: Optional[str] = None # e.g., "Easy", "Tempo"
     notes: Optional[List[str]] = None
     status: Literal['pending', 'completed', 'skipped'] = 'pending' # Default to pending
+    google_event_id: Optional[str] = None # ID of the event created in Google Calendar
 
 class DetailedWeek(BaseModel):
     week_number: int

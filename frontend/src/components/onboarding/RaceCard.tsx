@@ -49,6 +49,7 @@ interface RaceCardProps {
   onSelect?: (raceId: string | number) => void;
   onRemove?: (raceId: string | number) => void;
   onDeletePlanRequest?: (raceId: string | number) => void; // <-- Add callback prop for delete request
+  isGoogleConnected?: boolean; // <-- Add prop for Google status
 }
 
 // Add API Base URL (consider moving to a config file)
@@ -72,7 +73,8 @@ export function RaceCard({
     isPrOfficial,
     onSelect,
     onRemove,
-    onDeletePlanRequest
+    onDeletePlanRequest,
+    isGoogleConnected
 }: RaceCardProps) { 
     const supabase = createClient();
     const [user, setUser] = useState<User | null>(null);
