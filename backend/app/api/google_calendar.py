@@ -170,9 +170,15 @@ async def google_callback(
         raise HTTPException(status_code=500, detail="Failed to save Google account connection due to a server error.")
     # --- End Token Storage --- 
 
+    # --- DEBUGGING: Log the FRONTEND_URL being used ---
+    runtime_frontend_url = os.getenv("FRONTEND_URL", "DEFAULT_VALUE_NOT_FOUND") # Read it within the function scope
+    print(f"DEBUG CALLBACK: Using FRONTEND_URL='{runtime_frontend_url}' for redirect.")
+    # --- END DEBUGGING ---
+
     # Redirect back to the frontend, indicating success
     # TODO: Make the redirect target configurable
-    redirect_url = f"{FRONTEND_URL}/plan?google_connected=true" # <-- Redirect to /plan page
+    # Use the variable read within the function scope for consistency in debugging
+    redirect_url = f"{runtime_frontend_url}/plan?google_connected=true" # <-- Redirect to /plan page
     return RedirectResponse(redirect_url)
 
 # === Calendar Sync Endpoints ===
