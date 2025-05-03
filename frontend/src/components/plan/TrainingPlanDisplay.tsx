@@ -182,81 +182,90 @@ export function TrainingPlanDisplay({ plan, raceDate, userPrString }: TrainingPl
   return (
     <TooltipProvider delayDuration={300}>
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Training Outline: {plan.race_name} ({plan.race_distance})</h3>
-          <p className="text-sm text-muted-foreground">Total Weeks: {plan.total_weeks}</p>
-          {userPrString && (
-            <p className="text-xs flex items-center mt-1">
-              <Sparkles className="h-4 w-4 mr-1.5 text-primary flex-shrink-0" />
-              <span>
-                Personalized considering your {plan.race_distance} PR: {userPrString}
-              </span>
-            </p>
-          )}
-          {formattedRaceDate && (
-              <div className="flex items-center text-sm text-muted-foreground mt-1">
-                  <CalendarIcon className="h-4 w-4 mr-2" />
-                  <span>{formattedRaceDate}</span>
-                  {timeUntilRace && timeUntilRace !== "Race Finished" && (
-                     <span className="ml-2 text-xs">({timeUntilRace})</span>
-                  )}
-              </div>
-          )}
+          {/* --- Add Wrapper for Header Info --- */}
+          <div className="p-4 bg-primary/5 rounded-t-md space-y-1.5"> {/* Adjust spacing as needed */} 
+              <h3 className="text-lg font-semibold">Training Outline: {plan.race_name} ({plan.race_distance})</h3>
+              <p className="text-sm text-muted-foreground">Total Weeks: {plan.total_weeks}</p>
+              {/* Add PR information if available */} 
+              {userPrString && (
+                <p className="text-xs flex items-center"> {/* Removed mt-1, handled by space-y */} 
+                  <Sparkles className="h-4 w-4 mr-1.5 text-primary flex-shrink-0" /> 
+                  <span> 
+                    Personalized considering your {plan.race_distance} PR: {userPrString}
+                  </span>
+                </p>
+              )}
+              {/* --- Add Race Date and Countdown --- */} 
+              {formattedRaceDate && (
+                  <div className="flex items-center text-sm text-muted-foreground"> {/* Removed mt-1 */} 
+                      <CalendarIcon className="h-4 w-4 mr-2" />
+                      <span>{formattedRaceDate}</span>
+                      {timeUntilRace && timeUntilRace !== "Race Finished" && (
+                         <span className="ml-2 text-xs">({timeUntilRace})</span>
+                      )}
+                  </div>
+              )}
+          </div>
+          {/* --- End Wrapper --- */}
 
-          <Accordion type="single" collapsible defaultValue={defaultAccordionValue} className="w-full">
-            {plan.weeks.map((week) => {
-                const status = getWeekStatus(week.week_number, plan.total_weeks, raceDate);
-                const isPastWeek = status === 'past';
-                const isCurrentWeek = status === 'current';
+          {/* Make Accordion container separate from header bg */}
+          <div className="px-4 pb-4"> {/* Add padding around accordion */} 
+              <Accordion type="single" collapsible defaultValue={defaultAccordionValue} className="w-full">
+                {plan.weeks.map((week) => {
+                    const status = getWeekStatus(week.week_number, plan.total_weeks, raceDate);
+                    const isPastWeek = status === 'past';
+                    const isCurrentWeek = status === 'current';
 
-                return (
-                    <AccordionItem 
-                        value={`week-${week.week_number}`} 
-                        key={week.week_number}
-                        className={cn(
-                            "border rounded-md mb-2 overflow-hidden transition-all", // Base item style
-                            isPastWeek && "opacity-60 bg-muted/50 border-transparent",
-                            isCurrentWeek && "border-primary border-2 shadow-md bg-primary/10",
-                            !isCurrentWeek && "border"
-                        )}
-                    >
-                        <AccordionTrigger 
+                    return (
+                        <AccordionItem 
+                            value={`week-${week.week_number}`} 
+                            key={week.week_number}
                             className={cn(
-                                "px-4 py-3 text-base font-semibold hover:no-underline",
-                                isPastWeek && "line-through"
+                                "border rounded-md mb-2 overflow-hidden transition-all", // Base item style
+                                isPastWeek && "opacity-60 bg-muted/50 border-transparent",
+                                isCurrentWeek && "border-primary border-2 shadow-md bg-primary/10",
+                                !isCurrentWeek && "border"
                             )}
                         >
-                            <div className="flex justify-between items-center w-full">
-                               <span>Week {week.week_number}</span>
-                               {isCurrentWeek && (
-                                    <Badge variant="default" className="text-xs mr-4">Current Week</Badge> // Added margin
-                               )}
-                            </div>
-                        </AccordionTrigger>
-                        <AccordionContent className={cn("px-4 pb-3 pt-1 text-sm", isPastWeek && "line-through")}>
-                            <p className="leading-relaxed">{formatSummary(week.summary)}</p>
-                            {week.estimated_weekly_mileage && (
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    ~{week.estimated_weekly_mileage}
-                                </p>
-                            )}
-                        </AccordionContent>
-                    </AccordionItem>
-                );
-            })}
-          </Accordion>
+                            <AccordionTrigger 
+                                className={cn(
+                                    "px-4 py-3 text-base font-semibold hover:no-underline",
+                                    isPastWeek && "line-through"
+                                )}
+                            >
+                                <div className="flex justify-between items-center w-full">
+                                   <span>Week {week.week_number}</span>
+                                   {isCurrentWeek && (
+                                        <Badge variant="default" className="text-xs mr-4">Current Week</Badge>
+                                   )}
+                                </div>
+                            </AccordionTrigger>
+                            <AccordionContent className={cn("px-4 pb-3 pt-1 text-sm", isPastWeek && "line-through")}>
+                                <p className="leading-relaxed">{formatSummary(week.summary)}</p>
+                                {week.estimated_weekly_mileage && (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        ~{week.estimated_weekly_mileage}
+                                    </p>
+                                )}
+                            </AccordionContent>
+                        </AccordionItem>
+                    );
+                })}
+              </Accordion>
 
-          {plan.notes && plan.notes.length > 0 && (
-              <div className="mt-6 p-3 border rounded-md bg-muted text-muted-foreground">
-                  <h4 className="font-semibold text-sm mb-2 flex items-center">
-                      <Info className="h-4 w-4 mr-2" /> Coach Notes
-                  </h4>
-                  <ul className="list-disc list-inside space-y-1 text-xs">
-                      {plan.notes.map((note, index) => (
-                          <li key={index}>{note}</li>
-                      ))}
-                  </ul>
-              </div>
-          )}
+              {plan.notes && plan.notes.length > 0 && (
+                  <div className="mt-6 p-3 border rounded-md bg-muted text-muted-foreground">
+                      <h4 className="font-semibold text-sm mb-2 flex items-center">
+                          <Info className="h-4 w-4 mr-2" /> Coach Notes
+                      </h4>
+                      <ul className="list-disc list-inside space-y-1 text-xs">
+                          {plan.notes.map((note, index) => (
+                              <li key={index}>{note}</li>
+                          ))}
+                      </ul>
+                  </div>
+              )}
+          </div> {/* End padding div for accordion/notes */}
         </div>
     </TooltipProvider>
   );
