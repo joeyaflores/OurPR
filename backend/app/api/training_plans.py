@@ -565,4 +565,68 @@ async def update_daily_workout_status(
         raise HTTPException(status_code=500, detail="Failed to save updated workout status.")
 
     # 5. Return the updated daily workout object
-    return updated_day_data 
+    return updated_day_data
+
+# --- Endpoint to Update the Entire Plan Structure (e.g., after shifting days) ---
+
+@router.patch(
+    "/races/{race_id}/generated-plan", # Using PATCH on the existing resource URL
+    status_code=status.HTTP_200_OK,
+    summary="Update the structure of a Saved Detailed Training Plan",
+    response_model=DetailedTrainingPlan # Return the updated plan
+)
+async def update_saved_plan_structure(
+    race_id: uuid.UUID,
+    updated_plan: DetailedTrainingPlan, # Expect the full updated plan in the body
+    supabase: Client = Depends(get_supabase_client),
+    current_user: SupabaseUser = Depends(get_current_user)
+):
+    """Updates the entire saved detailed training plan structure for a user and race.
+    Used after client-side modifications like rearranging workout days.
+    """
+    user_id = str(current_user.id)
+
+    # 1. Basic Validation
+    # Ensure the user ID in the submitted plan matches the authenticated user
+    if updated_plan.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Plan user ID does not match authenticated user.")
+    # Ensure the race ID from the path roughly corresponds if needed (though plan might not store it)
+    # Optional: Add more validation on the structure if necessary (e.g., still 7 days per week?)
+
+    # 2. Convert updated plan to JSON for storage
+    try:
+        updated_plan_json = updated_plan.model_dump(mode='json')
+    except Exception as e:
+        # This shouldn't happen if Pydantic validation passed on input
+        print(f"Error serializing updated plan: {e}")
+        raise HTTPException(status_code=500, detail="Failed to prepare plan data for saving.")
+
+    # 3. Update the database record
+    try:
+        response = supabase.table("user_generated_plans")\
+            .update({"generated_plan": updated_plan_json})\
+            .eq("user_id", user_id)\
+            .eq("race_id", str(race_id))\
+            .execute()
+
+        # Check for errors during update
+        # Supabase update might return an empty data list on success, focus on errors
+        if hasattr(response, 'error') and response.error:
+             print(f"Supabase plan structure update error: {response.error}")
+             raise Exception("Supabase update failed.")
+        
+        # Optional: Check if any rows were actually updated if needed
+        # count = response.count if hasattr(response, 'count') else None
+        # if count == 0:
+        #     raise HTTPException(status_code=404, detail="No matching plan found to update.")
+
+        print(f"Successfully updated plan structure for user {user_id}, race {race_id}")
+
+    except HTTPException as http_exc:
+        raise http_exc # Re-raise specific exceptions like 404 if implemented above
+    except Exception as e:
+        print(f"Error updating plan structure in DB for user {user_id}, race {race_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save updated plan structure.")
+
+    # 4. Return the updated plan (as received and validated)
+    return updated_plan 

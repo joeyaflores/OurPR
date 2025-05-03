@@ -1,7 +1,7 @@
 'use client';
 
 import type { DetailedTrainingPlan, DetailedWeek, DailyWorkout } from '@/types/training_plan';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import {
   Accordion,
@@ -33,6 +33,8 @@ import {
     Loader2,       // Loading state for update
     Target,        // Target icon
     CheckCheck,    // CheckCheck icon
+    ChevronUp,     // <-- Add Up Arrow
+    ChevronDown,   // <-- Add Down Arrow
 } from "lucide-react";
 import { 
     parseISO, 
@@ -51,7 +53,6 @@ import {
 } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import React from 'react';
 import { workoutTypeMap, getWorkoutIcon } from './planUtils';
 import { WorkoutDetailModal } from './WorkoutDetailModal';
 
@@ -101,6 +102,11 @@ const getDayStatus = (dayDateStr: string): 'past' | 'today' | 'future' => {
     }
 };
 
+// --- Define Shiftable Workout Types --- 
+// const SHIFTABLE_WORKOUT_TYPES: Set<DailyWorkout['workout_type']> = new Set([...]);
+// Define types considered "hard" that flexible types shouldn't be moved next to
+// const HARD_WORKOUT_TYPES: Set<DailyWorkout['workout_type']> = new Set([...]);
+// -------------------------------------
 
 interface TrainingPlanDisplayProps {
   plan: DetailedTrainingPlan;
@@ -323,6 +329,122 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
       setIsDetailModalOpen(true);
   };
 
+  // --- Function to handle shifting workouts --- 
+  const handleShiftWorkout = (weekIndex: number, dayIndex: number, direction: 'up' | 'down') => {
+      const targetDayIndex = direction === 'up' ? dayIndex - 1 : dayIndex + 1;
+
+      // Basic boundary check
+      if (targetDayIndex < 0 || targetDayIndex > 6) {
+          // Keep boundary check
+          toast.error("Cannot shift past the beginning or end of the week.");
+          return;
+      }
+
+      const currentWeek = plan.weeks[weekIndex];
+      const dayToMove = currentWeek.days[dayIndex];
+      const targetDay = currentWeek.days[targetDayIndex];
+
+      // --- REMOVE Validation Logic --- 
+      // No more checks based on workout type or proximity
+      // --- End Removed Validation ---
+
+      // Swap only the workout details, keep date/day_of_week
+      setPlan(prevPlan => {
+          const newWeeks = [...prevPlan.weeks];
+          const newDays = [...newWeeks[weekIndex].days];
+          
+          // Extract details to swap (including status)
+          const detailsToMove = {
+              workout_type: dayToMove.workout_type,
+              description: dayToMove.description,
+              distance: dayToMove.distance,
+              duration: dayToMove.duration,
+              intensity: dayToMove.intensity,
+              notes: dayToMove.notes,
+              status: dayToMove.status,
+          };
+          const detailsToReceive = {
+              workout_type: targetDay.workout_type,
+              description: targetDay.description,
+              distance: targetDay.distance,
+              duration: targetDay.duration,
+              intensity: targetDay.intensity,
+              notes: targetDay.notes,
+              status: targetDay.status,
+          };
+
+          // Create new day objects with swapped details
+          newDays[dayIndex] = {
+              ...newDays[dayIndex], // Keep original date, day_of_week, etc.
+              ...detailsToReceive // Apply details from target
+          };
+          newDays[targetDayIndex] = {
+              ...newDays[targetDayIndex], // Keep original date, day_of_week, etc.
+              ...detailsToMove // Apply details from source
+          };
+
+          newWeeks[weekIndex] = { ...newWeeks[weekIndex], days: newDays };
+          const updatedPlan = { ...prevPlan, weeks: newWeeks };
+
+          // --- Call API to persist the change --- 
+          // Use an async IIFE (Immediately Invoked Function Expression) to handle the async call
+          (async () => {
+              const supabase = createClient();
+              const { data: { session } } = await supabase.auth.getSession();
+              const accessToken = session?.access_token;
+              
+              if (!accessToken) {
+                  toast.error("Authentication error. Cannot save plan changes.");
+                  // Consider rolling back the optimistic update here?
+                  // setPlan(prevPlan); // Rollback
+                  return; 
+              }
+
+              const saveUrl = `${API_BASE_URL}/api/users/me/races/${raceId}/generated-plan`;
+              try {
+                  const response = await fetch(saveUrl, {
+                      method: 'PATCH',
+                      headers: {
+                          'Authorization': `Bearer ${accessToken}`,
+                          'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify(updatedPlan), // Send the whole updated plan
+                  });
+
+                  if (!response.ok) {
+                      let errorDetail = `API error: ${response.status}`;
+                      try {
+                          const errorData = await response.json();
+                          errorDetail = errorData.detail || errorDetail;
+                      } catch { /* Ignore */ }
+                      throw new Error(errorDetail);
+                  }
+
+                  // Success!
+                  toast.success("Plan updated successfully!");
+                  // The state is already updated optimistically.
+                  // Optionally, update state with response if backend modifies it:
+                  // const savedPlan = await response.json();
+                  // setPlan(savedPlan); 
+
+              } catch (error: any) {
+                  console.error("Failed to save plan structure update:", error);
+                  toast.error("Failed to save changes", { description: error.message });
+                  // Rollback optimistic update on save failure
+                  setPlan(prevPlan); // Revert to the state before this shift
+              }
+          })();
+          // -----------------------------------------
+
+          // Notify parent if needed (using the optimistically updated plan)
+          if (onPlanUpdate) {
+              onPlanUpdate(updatedPlan);
+          }
+
+          return updatedPlan; // Return optimistically updated plan for immediate UI change
+      });
+  };
+
   return (
     <TooltipProvider delayDuration={150}>
         <div className="space-y-4">
@@ -372,17 +494,18 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
           {/* Accordion for Weeks */}
           <div className="pb-4"> 
               <Accordion type="single" collapsible defaultValue={defaultAccordionValue} className="w-full space-y-2">
-                {plan.weeks.map((week) => {
+                {plan.weeks.map((week, weekIndex) => {
+                    const dayIds = week.days.map(d => d.date);
                     const weekStatus = getWeekStatus(week.start_date, week.end_date);
                     const isPastWeek = weekStatus === 'past';
                     const isCurrentWeek = weekStatus === 'current';
 
                     return (
                         <AccordionItem 
+                            key={week.week_number} 
                             value={`week-${week.week_number}`} 
-                            key={week.week_number}
                             className={cn(
-                                "border rounded-md overflow-hidden transition-all duration-300",
+                                "border rounded-md transition-all duration-300",
                                 isPastWeek && "bg-muted/50 border-muted/60",
                                 isCurrentWeek && "border-primary border-2 shadow-md bg-primary/5",
                                 !isCurrentWeek && !isPastWeek && "border bg-card" // Future week default
@@ -437,7 +560,7 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                        )}
                                        {isPastWeek && (
                                              <Badge variant="secondary" className="text-xs">Done</Badge>
-                                   )}
+                                       )}
                                    </div>
                                 </div>
                             </AccordionTrigger>
@@ -446,27 +569,28 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                      <p className="text-sm font-semibold mb-3 mt-1">{week.weekly_focus}</p>
                                 )}
                                 <ul className="space-y-2">
-                                   {week.days.map((day) => {
-                                        const DayIcon = getWorkoutIcon(day.workout_type);
+                                    {week.days.map((day, dayIndex) => {
                                         const dayStatus = getDayStatus(day.date);
                                         const isPastDay = dayStatus === 'past';
                                         const isTodayDay = dayStatus === 'today';
                                         const isLoading = updatingDayDate === day.date;
+                                        const DayIcon = getWorkoutIcon(day.workout_type);
 
                                         return (
                                             <li key={day.date} className={cn(
-                                                "flex items-start space-x-3 p-2 rounded-md transition-colors",
+                                                "flex items-start space-x-3 p-2 rounded-md transition-colors bg-card",
                                                 isPastDay && !isTodayDay && "opacity-60",
                                                 isTodayDay && "bg-secondary/50 ring-1 ring-primary/50",
-                                                "hover:bg-muted/40 cursor-pointer"
-                                            )}
-                                            onClick={() => handleViewDetails(day)}
-                                            >
-                                                {/* --- Status Update Buttons --- */}
+                                                isLoading ? "shadow-lg" : "",
+                                                "hover:bg-muted/40"
+                                            )}>
+                                                {/* Status Buttons */}
                                                 <div 
-                                                    className="flex flex-col items-center pt-1 space-y-1 w-6"
+                                                    className="flex flex-col items-center pt-1 space-y-1 w-6 flex-shrink-0"
                                                     onClick={(e) => e.stopPropagation()}
-                                                    >
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    onTouchStart={(e) => e.stopPropagation()}
+                                                >
                                                     {isLoading ? (
                                                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                                                     ) : (
@@ -476,10 +600,7 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                                                     <button
                                                                         onClick={(e) => {e.stopPropagation(); handleUpdateStatus(day.date, 'completed');}}
                                                                         disabled={isLoading}
-                                                                        className={cn(
-                                                                            "rounded-full disabled:opacity-50",
-                                                                            day.status === 'completed' ? "text-green-600" : "text-muted-foreground hover:text-green-500"
-                                                                        )}
+                                                                        className={cn("rounded-full disabled:opacity-50", day.status === 'completed' ? "text-green-600" : "text-muted-foreground hover:text-green-500")}
                                                                     >
                                                                         <CheckCircle2 className="h-4 w-4" />
                                                                     </button>
@@ -491,61 +612,88 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                                                     <button
                                                                         onClick={(e) => {e.stopPropagation(); handleUpdateStatus(day.date, 'skipped');}}
                                                                         disabled={isLoading}
-                                                                        className={cn(
-                                                                            "rounded-full disabled:opacity-50",
-                                                                            day.status === 'skipped' ? "text-red-600" : "text-muted-foreground hover:text-red-500"
-                                                                        )}
+                                                                        className={cn("rounded-full disabled:opacity-50", day.status === 'skipped' ? "text-red-600" : "text-muted-foreground hover:text-red-500")}
                                                                     >
                                                                         <XCircle className="h-4 w-4" />
                                                                     </button>
                                                                 </TooltipTrigger>
                                                                 <TooltipContent side="left"><p>Mark as Skipped</p></TooltipContent>
                                                             </Tooltip>
-                                                             {/* Optional: Button to reset to pending? */}
-                                                             {(day.status === 'completed' || day.status === 'skipped') && (
-                                                                 <Tooltip>
-                                                                     <TooltipTrigger asChild>
-                                                                         <button
-                                                                             onClick={(e) => {e.stopPropagation(); handleUpdateStatus(day.date, 'pending');}}
-                                                                             disabled={isLoading}
-                                                                             className="rounded-full text-muted-foreground/60 hover:text-muted-foreground disabled:opacity-50"
-                                                                         >
-                                                                             <Circle className="h-3 w-3" /> {/* Smaller icon for pending */} 
-                                                                         </button>
-                                                                     </TooltipTrigger>
-                                                                     <TooltipContent side="left"><p>Reset to Pending</p></TooltipContent>
-                                                                 </Tooltip>
-                                                             )}
+                                                            {(day.status === 'completed' || day.status === 'skipped') && (
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <button
+                                                                            onClick={(e) => {e.stopPropagation(); handleUpdateStatus(day.date, 'pending');}}
+                                                                            disabled={isLoading}
+                                                                            className="rounded-full text-muted-foreground/60 hover:text-muted-foreground disabled:opacity-50"
+                                                                        >
+                                                                            <Circle className="h-3 w-3" />
+                                                                        </button>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent side="left"><p>Reset to Pending</p></TooltipContent>
+                                                                </Tooltip>
+                                                            )}
                                                         </>
                                                     )}
                                                 </div>
-                                                {/* ------------------------- */}
 
-                                                {/* Icon and Day of Week (No longer needs Tooltip wrapper as li is clickable) */}
-                                                <div className={cn("mt-1 flex-shrink-0 flex flex-col items-center w-12", isTodayDay && "font-semibold")}>
-                                                    <DayIcon className={cn("h-5 w-5")} />
-                                                    <span className="text-xs mt-0.5 text-muted-foreground">{day.day_of_week.substring(0,3)}</span>
-                                                </div>
-
-                                                {/* Workout Details */}
-                                                <div className="flex-grow">
-                                                    <p className={cn("text-sm font-medium leading-snug", isTodayDay && "font-semibold")}>
-                                                        {day.description}
-                                                    </p>
-                                                    <div className="text-xs text-muted-foreground space-x-2 mt-0.5">
-                                                        {day.distance && <span>{day.distance}</span>}
-                                                        {day.duration && <span>{day.duration}</span>}
-                                                        {day.intensity && <Badge variant="outline" className="text-xs font-normal">{day.intensity}</Badge>}
+                                                {/* Main Content Area (Icon, Day, Details) - Takes up remaining space */} 
+                                                <div 
+                                                    className="flex-grow flex items-start space-x-3 cursor-pointer" 
+                                                    onClick={() => handleViewDetails(day)}
+                                                >
+                                                    {/* Icon and Day of Week */}
+                                                    <div className={cn("mt-1 flex-shrink-0 flex flex-col items-center w-12", isTodayDay && "font-semibold")}>
+                                                        <DayIcon className={cn("h-5 w-5")} />
+                                                        <span className="text-xs mt-0.5 text-muted-foreground">{day.day_of_week.substring(0,3)}</span>
                                                     </div>
-                                                     {day.notes && day.notes.length > 0 && (
-                                                        <ul className="list-disc list-inside text-xs text-muted-foreground/80 mt-1 pl-1">
-                                                            {day.notes.map((note, idx) => <li key={idx}>{note}</li>)}
-                                                        </ul>
-                                                     )}
+
+                                                    {/* Workout Details */}
+                                                    <div className="flex-grow">
+                                                        <p className={cn("text-sm font-medium leading-snug", isTodayDay && "font-semibold")}>
+                                                            {day.description}
+                                                        </p>
+                                                        <div className="text-xs text-muted-foreground space-x-2 mt-0.5">
+                                                            {day.distance && <span>{day.distance}</span>}
+                                                            {day.duration && <span>{day.duration}</span>}
+                                                            {day.intensity && <Badge variant="outline" className="text-xs font-normal">{day.intensity}</Badge>}
+                                                        </div>
+                                                         {day.notes && day.notes.length > 0 && (
+                                                            <ul className="list-disc list-inside text-xs text-muted-foreground/80 mt-1 pl-1">
+                                                                {day.notes.map((note, idx) => <li key={idx}>{note}</li>)}
+                                                            </ul>
+                                                         )}
+                                                    </div>
                                                 </div>
+
+                                                {/* Shift Buttons Area (Aligned to the right) */} 
+                                                <div className="flex flex-col space-y-0.5 flex-shrink-0 ml-2"> {/* Vertical column for buttons */} 
+                                                                        {/* Shift Up Button */}
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-40"
+                                                                            onClick={(e) => {e.stopPropagation(); handleShiftWorkout(weekIndex, dayIndex, 'up');}}
+                                                                            disabled={dayIndex === 0} // Only disable based on position
+                                                                            aria-label="Shift workout up"
+                                                                        >
+                                                                            <ChevronUp className="h-4 w-4" />
+                                                                        </Button>
+                                                                        {/* Shift Down Button */}
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-40"
+                                                                            onClick={(e) => {e.stopPropagation(); handleShiftWorkout(weekIndex, dayIndex, 'down');}}
+                                                                            disabled={dayIndex === 6} // Only disable based on position
+                                                                            aria-label="Shift workout down"
+                                                                        >
+                                                                            <ChevronDown className="h-4 w-4" />
+                                                                        </Button>
+                                                                </div>
                                             </li>
                                         );
-                                   })}
+                                    })}
                                 </ul>
                             </AccordionContent>
                         </AccordionItem>
@@ -577,4 +725,4 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
         </div>
     </TooltipProvider>
   );
-} 
+} ;
