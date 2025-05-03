@@ -325,7 +325,7 @@ async def sync_plan_to_google_calendar(
                 # -------------------------------------
                 
                 # Create event
-                created_event = gc_service.create_calendar_event(
+                created_event = await gc_service.create_calendar_event(
                     service=calendar_service,
                     summary=day.workout_type, # Pass workout_type as summary (Title formatting happens in service)
                     description=description, # Pass newly formatted HTML description
