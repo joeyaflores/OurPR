@@ -7,7 +7,7 @@ import { RaceCard } from '@/components/onboarding/RaceCard'; // Assuming RaceCar
 import type { Race } from '@/lib/apiClient'; // Or your correct Race type path
 import type { PlannedRaceDetail } from '@/types/planned_race'; // <-- Import the new type
 import type { UserPr } from '@/types/user_pr'; // <-- Import UserPr type
-import type { TrainingPlanOutline } from '@/types/training_plan'; // <-- Import TrainingPlanOutline type
+import type { TrainingPlanOutline, DetailedTrainingPlan } from '@/types/training_plan'; // <-- Import TrainingPlanOutline type
 import { Skeleton } from "@/components/ui/skeleton"; // For loading state
 import { AlertCircle, Loader2, Save, Info } from 'lucide-react'; // For error state & Save icon
 import {
@@ -66,7 +66,7 @@ export default function MyPlanPage() {
     const [isPlanGenerating, setIsPlanGenerating] = useState(false);
     const [planGenerationError, setPlanGenerationError] = useState<string | null>(null);
     const [selectedRaceIdForPlan, setSelectedRaceIdForPlan] = useState<string | number | null>(null);
-    const [currentPlanOutline, setCurrentPlanOutline] = useState<TrainingPlanOutline | null>(null);
+    const [currentPlanOutline, setCurrentPlanOutline] = useState<DetailedTrainingPlan | null>(null);
     const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
     const [planWasJustGenerated, setPlanWasJustGenerated] = useState(false); // <-- Track if plan in modal is new
     const [isViewingPlan, setIsViewingPlan] = useState(false); // <-- Track view loading state
@@ -211,7 +211,7 @@ export default function MyPlanPage() {
                 throw new Error(errorDetail);
             }
 
-            const planData: TrainingPlanOutline = await response.json();
+            const planData: DetailedTrainingPlan = await response.json();
             setCurrentPlanOutline(planData);
             setPlanWasJustGenerated(true); // Set flag indicating this plan is new
             // console.log("Successfully generated plan:", planData);
@@ -268,7 +268,7 @@ export default function MyPlanPage() {
                  throw new Error(errorDetail);
             }
 
-            const planData: TrainingPlanOutline = await response.json();
+            const planData: DetailedTrainingPlan = await response.json();
             setCurrentPlanOutline(planData);
              // console.log("Successfully fetched saved plan:", planData);
 
@@ -528,17 +528,17 @@ export default function MyPlanPage() {
                             // Find the selected race to pass its date and PR
                             (() => {
                                 const selectedRace = racesWithDetails.find(r => r.id === selectedRaceIdForPlan);
-                                if (selectedRace?.date) {
+                                if (selectedRace) {
                                     return (
                                         <TrainingPlanDisplay 
                                             plan={currentPlanOutline} 
-                                            raceDate={selectedRace.date} 
-                                            userPrString={selectedRace.userPr} // <-- Pass the PR string
+                                            raceId={selectedRace.id}
+                                            userPrString={selectedRace.userPr}
                                         />
                                     );
                                 }
                                 // Handle case where race or date isn't found (should not happen if plan exists)
-                                return <p className="text-destructive text-center">Error: Could not find race date for this plan.</p>; 
+                                return <p className="text-destructive text-center">Error: Could not find selected race details.</p>; 
                             })()
                         )}
                     </div>

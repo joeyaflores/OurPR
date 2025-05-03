@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional, Literal
+import uuid
+from datetime import date, datetime # Import date and datetime
 
 class WeeklySummary(BaseModel):
     week_number: int = Field(..., description="Week number (e.g., 1, 2, ...)")
@@ -12,4 +14,45 @@ class TrainingPlanOutline(BaseModel):
     race_distance: str
     total_weeks: int
     weeks: List[WeeklySummary] = Field(..., description="List of weekly training summaries leading up to the race")
-    notes: List[str] | None = Field(None, description="Optional additional notes or disclaimers from the AI") 
+    notes: List[str] | None = Field(None, description="Optional additional notes or disclaimers from the AI")
+
+# --- Detailed Daily Plan Pydantic Models ---
+
+class DailyWorkout(BaseModel):
+    date: str # ISO 8601 Format: "YYYY-MM-DD"
+    day_of_week: Literal['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    workout_type: Literal['Easy Run', 'Tempo Run', 'Intervals', 'Speed Work', 'Long Run', 'Rest', 'Cross-Training', 'Strength', 'Race Pace', 'Warm-up', 'Cool-down', 'Other']
+    description: str # e.g., "5 miles at conversational pace"
+    distance: Optional[str] = None # e.g., "5 miles"
+    duration: Optional[str] = None # e.g., "45 minutes"
+    intensity: Optional[str] = None # e.g., "Easy", "Tempo"
+    notes: Optional[List[str]] = None
+    status: Literal['pending', 'completed', 'skipped'] = 'pending' # Default to pending
+
+class DetailedWeek(BaseModel):
+    week_number: int
+    start_date: str # "YYYY-MM-DD" of the Monday
+    end_date: str # "YYYY-MM-DD" of the Sunday
+    days: List[DailyWorkout] # Array of 7 DailyWorkout objects
+    weekly_focus: Optional[str] = None
+    estimated_weekly_mileage: Optional[str] = None
+
+class DetailedTrainingPlan(BaseModel):
+    plan_id: str = Field(default_factory=lambda: str(uuid.uuid4())) # Generate UUID for new plans
+    user_id: str # Needs to be set when creating/saving
+    race_name: str
+    race_distance: str
+    race_date: str # "YYYY-MM-DD"
+    goal_time: Optional[str] = None
+    plan_start_date: str # "YYYY-MM-DD" - First Monday of the plan
+    total_weeks: int
+    weeks: List[DetailedWeek]
+    overall_notes: Optional[List[str]] = None
+    personalization_details: Optional[dict] = None # Keep flexible for now
+    generated_at: str = Field(default_factory=lambda: datetime.now().isoformat()) # Timestamp
+    plan_version: str = "v2.0-daily" # Version indicator
+
+# --- Model for Updating Daily Workout Status --- 
+
+class DailyWorkoutStatusUpdate(BaseModel):
+    status: Literal['pending', 'completed', 'skipped'] 
