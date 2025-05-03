@@ -748,7 +748,7 @@ function PlanPageContent() {
                         <div className="flex items-center justify-center gap-2">
                             <Button onClick={handleConnectGoogle} variant="outline">
                                 <LinkIcon className="mr-2 h-4 w-4" />
-                                Connect Google Account
+                                Connect Google Calendar
                             </Button>
                             <Tooltip>
                                 <TooltipTrigger asChild>
