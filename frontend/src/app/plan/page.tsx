@@ -638,7 +638,7 @@ export default function MyPlanPage() {
                      ) : (
                          <Button onClick={handleConnectGoogle} variant="outline">
                              <LinkIcon className="mr-2 h-4 w-4" />
-                             Connect Google Account
+                             Connect Google Calendar
                          </Button>
                      )}
                  </div>

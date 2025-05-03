@@ -561,40 +561,66 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                   </div>
               )}
               {/* --- Google Calendar Buttons --- */}
-              {isGoogleConnected && (
-                 <div className="mt-2 flex gap-2">
-                     {isPlanSyncedToGoogle ? (
-                         <Button 
-                             variant="outline" 
-                             size="sm" 
-                             onClick={handleRemovePlan}
-                             disabled={isRemoving || isSyncing}
-                         >
-                             {isRemoving ? (
-                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                             ) : (
-                                 <CalendarMinus className="mr-2 h-4 w-4" />
-                             )}
-                             Remove from Calendar
-                         </Button>
-                     ) : (
+              {/* Logic moved slightly: Button shown conditionally based on sync status, 
+                   enabled/disabled based on connection status */}
+              <div className="mt-2 flex gap-2">
+                  {isPlanSyncedToGoogle ? (
+                      // --- Remove Button (Only shown if synced, implies connection exists) ---
+                      <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={handleRemovePlan}
+                          disabled={isRemoving || isSyncing} // Disable during any operation
+                      >
+                          {isRemoving ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                              <CalendarMinus className="mr-2 h-4 w-4" />
+                          )}
+                          Remove from Calendar
+                      </Button>
+                  ) : (
+                      // --- Add Button (Always shown if not synced) ---
+                      isGoogleConnected ? (
+                         // --- Enabled Add Button ---
                          <Button 
                              variant="outline" 
                              size="sm" 
                              onClick={handleSyncPlan}
-                             disabled={isSyncing || isRemoving}
+                             disabled={isSyncing || isRemoving} // Disable during any operation
                          >
                              {isSyncing ? (
                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                              ) : (
                                  <CalendarPlus className="mr-2 h-4 w-4" />
                              )}
-                             Add to Calendar
+                             Add to Google Calendar
                          </Button>
-                     )}
-                 </div>
-              )}
-              {/* ----------------------- */}
+                      ) : (
+                          // --- Disabled Add Button with Tooltip ---
+                          <Tooltip>
+                             <TooltipTrigger asChild>
+                                 {/* Span needed for Tooltip to work on disabled button */}
+                                 <span tabIndex={0}> 
+                                     <Button 
+                                         variant="outline" 
+                                         size="sm" 
+                                         disabled // Always disabled if not connected
+                                         className="cursor-not-allowed"
+                                     >
+                                         <CalendarPlus className="mr-2 h-4 w-4" />
+                                         Add to Google Calendar
+                                     </Button>
+                                 </span>
+                             </TooltipTrigger>
+                             <TooltipContent>
+                                 <p>Please connect your Google Calendar first.</p>
+                             </TooltipContent>
+                         </Tooltip>
+                      )
+                  )}
+              </div>
+              {/* ----------------------------- */}
                {/* --- Overall Adherence --- */}
                {overallAdherence !== null && (
                     <div className="flex items-center text-sm text-muted-foreground pt-1">
