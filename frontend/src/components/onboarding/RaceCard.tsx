@@ -11,6 +11,7 @@ import type { User } from '@supabase/supabase-js';
 import { toast } from "sonner"; // Import toast
 import { Progress } from "@/components/ui/progress"; // Import Progress
 import { cn } from "@/lib/utils"; // Import cn for conditional classes
+import { differenceInWeeks, parseISO, isFuture, startOfDay } from 'date-fns'; // <-- Import date functions
 import { 
     AlertDialog, 
     AlertDialogAction, 
@@ -219,6 +220,31 @@ export function RaceCard({
     // Handler for the placeholder generate button
     const handleGeneratePlanClick = (e: React.MouseEvent) => {
         e.stopPropagation(); // Prevent card click if needed
+
+        // --- Add Frontend Check for Plan Duration --- 
+        const MAX_PLAN_WEEKS = 20;
+        if (race.date) {
+            try {
+                const today = startOfDay(new Date());
+                const raceDate = parseISO(race.date);
+                if (isFuture(raceDate)) {
+                    const weeksUntil = differenceInWeeks(raceDate, today);
+                    if (weeksUntil > MAX_PLAN_WEEKS) {
+                        toast.error(
+                            "Plan Duration Too Long", 
+                            { description: `Plans can only be generated for races up to ${MAX_PLAN_WEEKS} weeks away.` }
+                        );
+                        return; // Stop execution, do not call the parent handler
+                    }
+                }
+                 // Allow past/today races to pass through; backend will handle those errors.
+            } catch (error) {
+                console.error("Error parsing race date for duration check:", error);
+                // If date parsing fails, let the backend handle it
+            }
+        } 
+        // --- End Check ---
+
         // Call the parent handler, passing the race ID
         if (onGeneratePlanRequest) { // Check if handler exists
             onGeneratePlanRequest(race.id);

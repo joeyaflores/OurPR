@@ -141,6 +141,15 @@ async def generate_training_plan(
         if weeks_until < 1:
              raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not enough time before the race for a plan.")
 
+        # --- Add Maximum Weeks Check ---
+        MAX_PLAN_WEEKS = 20
+        if weeks_until > MAX_PLAN_WEEKS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail=f"Training plans cannot be generated for more than {MAX_PLAN_WEEKS} weeks. Please choose a race closer to the current date."
+            )
+        # -----------------------------
+
         # Calculate the actual start date of the plan (Monday of the first week)
         # Plan starts 'weeks_until' weeks before the week of the race
         plan_start_date_obj = get_monday_of_week(race_date_obj, weeks_until)
