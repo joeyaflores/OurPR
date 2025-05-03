@@ -419,14 +419,20 @@ async def save_generated_plan(
     "/races/{race_id}/generated-plan",
     response_model=DetailedTrainingPlan,
     summary="Get Saved Detailed Training Plan",
-    responses={404: {"detail": "No saved plan found for this race."}}
+    responses={
+        404: {"detail": "No saved plan found for this race."},
+        409: {"detail": "Saved plan is in an outdated format. Please delete and regenerate."},
+        500: {"detail": "Saved plan data is invalid or server error."}
+    }
 )
 async def get_saved_plan(
     race_id: uuid.UUID,
     supabase: Client = Depends(get_supabase_client),
     current_user: SupabaseUser = Depends(get_current_user)
 ):
-    """Retrieves a previously saved generated detailed training plan for the user and specified race."""
+    """Retrieves a previously saved generated detailed training plan for the user and specified race.
+       Handles outdated plan formats by returning a specific error.
+    """
     user_id = current_user.id
 
     try:
@@ -442,18 +448,30 @@ async def get_saved_plan(
 
         plan_data = response.data["generated_plan"]
 
-        # Validate against the DETAILED model before returning
-        # Add robustness: check if it LOOKS like a detailed plan vs old outline?
-        # For now, assume it's the new format if found.
-        # Add a version field check if that was added to the table.
-        return DetailedTrainingPlan.parse_obj(plan_data)
+        # Attempt to parse as the NEW DetailedTrainingPlan first
+        try:
+            detailed_plan = DetailedTrainingPlan.parse_obj(plan_data)
+            # If successful, return it
+            return detailed_plan
+        except ValidationError as detailed_exc:
+            # Parsing as NEW format failed, now check if it's the OLD format
+            print(f"Failed to parse plan as DetailedTrainingPlan for user {user_id}, race {race_id}. Error: {detailed_exc}")
+            try:
+                # Attempt to parse as the OLD TrainingPlanOutline
+                TrainingPlanOutline.parse_obj(plan_data)
+                # If this succeeds, it means the data matches the OLD structure
+                print("Plan data matches OLD TrainingPlanOutline format.")
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT, # Or 422
+                    detail="Saved plan uses an outdated format. Please delete it and generate a new one."
+                )
+            except ValidationError as outline_exc:
+                # If it fails validation as BOTH new and old, then the data is truly corrupt/invalid
+                print(f"Failed to parse plan as TrainingPlanOutline as well. Error: {outline_exc}")
+                raise HTTPException(status_code=500, detail="Saved plan data is invalid or corrupted.")
 
-    except HTTPException as e: # Re-raise 404
-        raise e
-    except ValidationError as e:
-        print(f"Error validating saved detailed plan data for user {user_id}, race {race_id}: {e}")
-        # Maybe return the old format if validation as new one fails? Or just error.
-        raise HTTPException(status_code=500, detail="Saved plan data is invalid or in an old format.")
+    except HTTPException as e:
+        raise e # Re-raise 404, 409, 500 from above
     except Exception as e:
         print(f"Error fetching saved plan for user {user_id}, race {race_id}: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while fetching the saved plan.")
@@ -629,4 +647,63 @@ async def update_saved_plan_structure(
         raise HTTPException(status_code=500, detail="Failed to save updated plan structure.")
 
     # 4. Return the updated plan (as received and validated)
-    return updated_plan 
+    return updated_plan
+
+# --- Endpoint to Delete a Saved Training Plan --- 
+
+@router.delete(
+    "/races/{race_id}/generated-plan",
+    status_code=status.HTTP_204_NO_CONTENT, # Standard for successful DELETE
+    summary="Delete a Saved Training Plan",
+    responses={
+        404: {"detail": "No saved plan found for this race to delete."},
+        204: {"description": "Plan successfully deleted."}
+    }
+)
+async def delete_saved_plan(
+    race_id: uuid.UUID,
+    supabase: Client = Depends(get_supabase_client),
+    current_user: SupabaseUser = Depends(get_current_user)
+):
+    """Deletes a previously saved generated training plan for the user and specified race."""
+    user_id = str(current_user.id)
+    print(f"Attempting to delete plan for user {user_id}, race {race_id}")
+
+    try:
+        delete_response = supabase.table("user_generated_plans")\
+            .delete()\
+            .eq("user_id", user_id)\
+            .eq("race_id", str(race_id))\
+            .execute()
+
+        # Check if any rows were deleted. 
+        # Supabase delete might return empty data list even if successful.
+        # A more reliable check might involve checking response metadata if available,
+        # or simply assuming success if no error is raised and proceeding.
+        # Let's assume for now that if no exception occurs, it worked or the record didn't exist.
+
+        # You could potentially do a select first to ensure it exists and return 404,
+        # but delete is often idempotent (deleting non-existent is okay).
+        
+        # Check for explicit errors in the response object if Supabase provides them
+        if hasattr(delete_response, 'error') and delete_response.error:
+            print(f"Supabase plan deletion error: {delete_response.error}")
+            # Don't expose DB error details directly usually
+            raise HTTPException(status_code=500, detail="Database error during deletion.")
+
+        # Optional: Check count if available to confirm deletion
+        # count = delete_response.count if hasattr(delete_response, 'count') else None
+        # print(f"Delete operation count: {count}")
+        # if count == 0:
+        #     # If count is reliably 0 when nothing matched, return 404
+        #     raise HTTPException(status_code=404, detail="No saved plan found for this race to delete.")
+
+        print(f"Successfully deleted plan (or plan did not exist) for user {user_id}, race {race_id}")
+        # No need to return anything on 204 No Content
+        return
+
+    except HTTPException as http_exc:
+        raise http_exc # Re-raise specific exceptions like potential 404
+    except Exception as e:
+        print(f"Error deleting saved plan for user {user_id}, race {race_id}: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while deleting the plan.") 
