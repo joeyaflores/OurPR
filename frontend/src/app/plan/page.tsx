@@ -41,6 +41,11 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
 
 // Add API Base URL (consider moving to a config file or env var)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -722,27 +727,31 @@ function PlanPageContent() {
                 <div className="mb-6 p-4 border rounded-md flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4">
                     {isGoogleConnected ? (
                         <>
+                            {/* Status Text */}
                             <div className="flex items-center justify-center text-green-600 font-medium">
                                 <CalendarPlus className="h-5 w-5 mr-2" />
                                 <span>Google Calendar Connected</span>
                             </div>
-                            <Button onClick={handleDisconnectGoogle} variant="outline" size="sm">
-                                <LinkIcon className="mr-2 h-4 w-4" />
-                                Disconnect
-                            </Button>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground">
-                                        <Info className="h-4 w-4" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom" className="max-w-xs">
-                                    <p className="font-semibold mb-1">Google Calendar Sync</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        Your account is connected. Add/Remove plans from your calendar using the buttons in the plan details modal.
-                                    </p>
-                                </TooltipContent>
-                            </Tooltip>
+                            {/* Button + Info Icon Group - Add wrapper div */}
+                            <div className="flex items-center justify-center gap-2">
+                                <Button onClick={handleDisconnectGoogle} variant="outline" size="sm">
+                                    <LinkIcon className="mr-2 h-4 w-4" />
+                                    Disconnect
+                                </Button>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground">
+                                            <Info className="h-4 w-4" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent side="bottom" className="w-auto max-w-xs p-3">
+                                        <p className="font-semibold mb-1 text-sm">Google Calendar Sync</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Your account is connected. Add/Remove plans from your calendar using the buttons in the plan details modal.
+                                        </p>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
                         </>
                     ) : (
                         <div className="flex items-center justify-center gap-2">
@@ -750,21 +759,21 @@ function PlanPageContent() {
                                 <LinkIcon className="mr-2 h-4 w-4" />
                                 Connect Google Calendar
                             </Button>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
+                            <Popover>
+                                <PopoverTrigger asChild>
                                     <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
                                         <Info className="h-4 w-4" />
                                     </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom" className="max-w-xs">
-                                    <p className="font-semibold mb-1">Sync with Google Calendar!</p>
+                                </PopoverTrigger>
+                                <PopoverContent side="bottom" className="w-auto max-w-xs p-3">
+                                    <p className="font-semibold mb-1 text-sm">Sync with Google Calendar!</p>
                                     <ul className="list-disc list-outside pl-4 text-xs text-muted-foreground space-y-1">
                                         <li>View OurPR workouts in your main calendar.</li>
                                         <li>Connect to add/remove your current plan easily.</li>
                                         <li>Sync changes after editing or regenerating plans.</li>
                                     </ul>
-                                </TooltipContent>
-                            </Tooltip>
+                                </PopoverContent>
+                            </Popover>
                         </div>
                     )}
                 </div>
