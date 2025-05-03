@@ -208,8 +208,9 @@ export function TrainingPlanDisplay({ plan, raceDate, userPrString }: TrainingPl
           </div>
           {/* --- End Wrapper --- */}
 
-          {/* Make Accordion container separate from header bg */}
-          <div className="px-4 pb-4"> {/* Add padding around accordion */} 
+          {/* Remove px-4 to allow accordion items to span full width */}
+          {/* Keep pb-4 for bottom spacing */} 
+          <div className="pb-4"> 
               <Accordion type="single" collapsible defaultValue={defaultAccordionValue} className="w-full">
                 {plan.weeks.map((week) => {
                     const status = getWeekStatus(week.week_number, plan.total_weeks, raceDate);
