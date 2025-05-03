@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
 import { RaceCard } from '@/components/onboarding/RaceCard'; // Assuming RaceCard is here or adjust path
@@ -35,6 +35,12 @@ import {
     addWeeks // <-- Import addWeeks
 } from 'date-fns'; // <-- Import date-fns functions
 import { useSearchParams } from 'next/navigation';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Add API Base URL (consider moving to a config file or env var)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -69,7 +75,8 @@ const formatTime = (totalSeconds: number): string => {
     }
   };
 
-export default function MyPlanPage() {
+// Define the actual content as a separate client component
+function PlanPageContent() {
     const supabase = createClient();
     const [user, setUser] = useState<User | null>(null);
     const [plannedRaces, setPlannedRaces] = useState<PlannedRaceDetail[]>([]); // <-- Use PlannedRaceDetail[]
@@ -695,7 +702,12 @@ export default function MyPlanPage() {
 
     // --- Render component --- 
     return (
-        <div className="container mx-auto p-4 md:p-6">
+        <motion.div 
+            className="container mx-auto p-4 md:p-8 max-w-6xl" // Constrain width
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+        >
             <h1 className="text-2xl font-bold mb-6">My Training Plan</h1>
 
             {/* --- Add PR Logging Tip --- */}
@@ -707,25 +719,55 @@ export default function MyPlanPage() {
 
             {/* --- Google Connection Button Area (Moved Here) --- */}
             {!isLoading && !error && (
-                 <div className="mb-6 text-center p-4 border rounded-md flex flex-col sm:flex-row items-center justify-center gap-4">
-                     {isGoogleConnected ? (
+                <div className="mb-6 p-4 border rounded-md flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4">
+                    {isGoogleConnected ? (
                         <>
-                          <div className="flex items-center justify-center text-green-600 font-medium">
-                               <CalendarPlus className="h-5 w-5 mr-2" />
-                               <span>Google Calendar Connected</span>
-                          </div>
-                          <Button onClick={handleDisconnectGoogle} variant="outline" size="sm">
-                              <LinkIcon className="mr-2 h-4 w-4" />
-                              Disconnect
-                           </Button>
+                            <div className="flex items-center justify-center text-green-600 font-medium">
+                                <CalendarPlus className="h-5 w-5 mr-2" />
+                                <span>Google Calendar Connected</span>
+                            </div>
+                            <Button onClick={handleDisconnectGoogle} variant="outline" size="sm">
+                                <LinkIcon className="mr-2 h-4 w-4" />
+                                Disconnect
+                            </Button>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground">
+                                        <Info className="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-xs">
+                                    <p className="font-semibold mb-1">Google Calendar Sync</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Your account is connected. Add/Remove plans from your calendar using the buttons in the plan details modal.
+                                    </p>
+                                </TooltipContent>
+                            </Tooltip>
                         </>
-                     ) : (
-                         <Button onClick={handleConnectGoogle} variant="outline">
-                             <LinkIcon className="mr-2 h-4 w-4" />
-                             Connect Google Calendar
-                         </Button>
-                     )}
-                 </div>
+                    ) : (
+                        <div className="flex items-center justify-center gap-2">
+                            <Button onClick={handleConnectGoogle} variant="outline">
+                                <LinkIcon className="mr-2 h-4 w-4" />
+                                Connect Google Account
+                            </Button>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                                        <Info className="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-xs">
+                                    <p className="font-semibold mb-1">Sync with Google Calendar!</p>
+                                    <ul className="list-disc list-outside pl-4 text-xs text-muted-foreground space-y-1">
+                                        <li>View OurPR workouts in your main calendar.</li>
+                                        <li>Connect to add/remove your current plan easily.</li>
+                                        <li>Sync changes after editing or regenerating plans.</li>
+                                    </ul>
+                                </TooltipContent>
+                            </Tooltip>
+                        </div>
+                    )}
+                </div>
             )}
             {/* ------------------------------------------------ */}
 
@@ -905,6 +947,65 @@ export default function MyPlanPage() {
                      )}
                 </DialogContent>
             </Dialog>
-        </div>
+        </motion.div>
     );
 }
+
+// Default export is now a simple Server Component that wraps the client component in Suspense
+export default function MyPlanPage() {
+    return (
+        <Suspense fallback={<PlanPageSkeleton />}> {/* Or any other suitable fallback */}
+            <PlanPageContent />
+        </Suspense>
+    );
+}
+
+// --- Skeleton Component for Suspense Fallback ---
+const PlanPageSkeleton = () => (
+    <div className="container mx-auto p-4 md:p-8 max-w-6xl animate-pulse">
+        <h1 className="text-3xl font-bold mb-6"><Skeleton className="h-8 w-1/3" /></h1>
+        
+        {/* Skeleton for PR Section */}
+        <div className="mb-8 p-6 bg-card rounded-lg shadow">
+            <h2 className="text-2xl font-semibold mb-4 flex items-center">
+                <Skeleton className="h-6 w-1/4 mr-2" /> <Info className="h-4 w-4 text-muted-foreground" />
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {[...Array(3)].map((_, i) => (
+                    <div key={i} className="p-3 bg-muted rounded">
+                        <Skeleton className="h-5 w-1/2 mb-1" />
+                        <Skeleton className="h-5 w-3/4" />
+                    </div>
+                ))}
+            </div>
+             <Skeleton className="h-10 w-32 mt-4" /> {/* Skeleton for Add PR button */}
+        </div>
+
+        {/* Skeleton for Google Connection Section */}
+         <div className="mb-8 p-6 bg-card rounded-lg shadow">
+             <h2 className="text-2xl font-semibold mb-4"><Skeleton className="h-6 w-1/4" /></h2>
+             <Skeleton className="h-10 w-40" />
+         </div>
+
+
+        {/* Skeleton for Planned Races Section */}
+        <div className="mb-8">
+            <h2 className="text-2xl font-semibold mb-4"><Skeleton className="h-6 w-1/4" /></h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                 {[...Array(2)].map((_, i) => (
+                    <div key={i} className="bg-card rounded-lg shadow overflow-hidden p-4 border border-border">
+                        <Skeleton className="h-6 w-3/4 mb-2" />
+                        <Skeleton className="h-4 w-1/2 mb-1" />
+                        <Skeleton className="h-4 w-1/3 mb-3" />
+                        <div className="flex space-x-2 mt-4">
+                            <Skeleton className="h-9 w-24" />
+                            <Skeleton className="h-9 w-24" />
+                             <Skeleton className="h-9 w-9 rounded-full" />
+                        </div>
+                    </div>
+                 ))}
+            </div>
+        </div>
+    </div>
+);
+// --- End Skeleton Component ---
