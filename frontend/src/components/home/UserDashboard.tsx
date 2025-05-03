@@ -880,7 +880,8 @@ export default function UserDashboard({ user }: UserDashboardProps) {
                      viewport={{ once: true, amount: 0.2 }}
                      className="lg:col-span-1" // Apply grid span to motion div
                  >
-                     <Card className="bg-gradient-to-br from-primary/10 via-background to-background border-primary/20 h-full"> {/* Added h-full */}
+                     {/* Update gradient and border colors */}
+                     <Card className="bg-gradient-to-br from-blue-100/50 via-blue-50/20 to-background dark:from-blue-900/30 dark:via-blue-950/10 dark:to-background border-blue-200/50 dark:border-blue-800/30 h-full">
                      <CardHeader>
                        <CardTitle className="flex items-center gap-2">
                          <Target className="w-5 h-5 text-primary" />
