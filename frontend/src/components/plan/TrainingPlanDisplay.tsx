@@ -34,12 +34,13 @@ import {
     Target,        // Target icon
     CheckCheck,    // CheckCheck icon
 } from "lucide-react";
-import {
-    parseISO,
-    isPast,
+import { 
+    parseISO, 
+    isPast, 
     isToday,
     startOfDay,
     endOfDay,
+    differenceInDays,
     format
 } from 'date-fns';
 import {
@@ -51,40 +52,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import React from 'react';
+import { workoutTypeMap, getWorkoutIcon } from './planUtils';
+import { WorkoutDetailModal } from './WorkoutDetailModal';
 
 // API Base URL (Consider moving to config)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
-
-// --- Workout Type Definitions for Icons and Tooltips ---
-const workoutTypeMap: Record<DailyWorkout['workout_type'], { icon: React.ElementType, tooltip: string }> = {
-    "Easy Run": { icon: Footprints, tooltip: "Run at a comfortable, conversational pace to build aerobic base." },
-    "Tempo Run": { icon: Gauge, tooltip: "Run at a 'comfortably hard' pace, sustainable for a significant duration, to improve lactate threshold." },
-    "Intervals": { icon: Zap, tooltip: "Short, high-intensity bursts followed by recovery periods, designed to improve speed and efficiency." },
-    "Speed Work": { icon: Zap, tooltip: "High-intensity running (like intervals or hill repeats) aimed at improving pace and running economy." },
-    "Long Run": { icon: TrendingUp, tooltip: "The longest run of the week, done at an easy pace, crucial for endurance and mental toughness." },
-    "Rest": { icon: Bed, tooltip: "Crucial for recovery and adaptation. No running or strenuous activity planned." },
-    "Cross-Training": { icon: Bike, tooltip: "Activities other than running (e.g., cycling, swimming) to improve overall fitness and reduce injury risk." },
-    "Strength": { icon: Dumbbell, tooltip: "Strength training exercises to support running and prevent injuries." },
-    "Race Pace": { icon: Flag, tooltip: "Running sections or the entire workout at your target race pace." },
-    "Warm-up": { icon: Play, tooltip: "Preparation before a main workout, typically including light cardio and dynamic stretches." },
-    "Cool-down": { icon: Pause, tooltip: "Gradual reduction in activity after a workout, often involving easy jogging/walking and static stretching." },
-    "Other": { icon: HelpCircle, tooltip: "Activity type not specifically categorized." },
-    // Add more specific types as needed in DailyWorkout interface
-};
-
-// --- Helper Function to get Workout Icon ---
-const getWorkoutIcon = (workoutType: DailyWorkout['workout_type']): React.ElementType => {
-    return workoutTypeMap[workoutType]?.icon || HelpCircle; // Fallback icon
-};
-// ----------------------------------------
-
-
-interface TrainingPlanDisplayProps {
-  plan: DetailedTrainingPlan;
-  raceId: string | number;
-  onPlanUpdate?: (updatedPlan: DetailedTrainingPlan) => void;
-  userPrString?: string | null; // Keep for displaying personalization note if available
-}
 
 // Helper to determine week status relative to today using week start/end dates
 const getWeekStatus = (weekStartDateStr: string, weekEndDateStr: string): 'past' | 'current' | 'future' => {
@@ -130,11 +102,21 @@ const getDayStatus = (dayDateStr: string): 'past' | 'today' | 'future' => {
 };
 
 
+interface TrainingPlanDisplayProps {
+  plan: DetailedTrainingPlan;
+  raceId: string | number;
+  onPlanUpdate?: (updatedPlan: DetailedTrainingPlan) => void;
+  userPrString?: string | null; // Keep for displaying personalization note if available
+}
+
 export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, userPrString }: TrainingPlanDisplayProps) {
     // Local state to manage the plan, allowing updates without full page reload
     const [plan, setPlan] = useState<DetailedTrainingPlan>(initialPlan);
     // State to track which day is currently being updated
     const [updatingDayDate, setUpdatingDayDate] = useState<string | null>(null);
+    // State for managing the detail modal
+    const [selectedWorkout, setSelectedWorkout] = useState<DailyWorkout | null>(null);
+    const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
     // Update local state if the initial plan prop changes
     // This is important if the parent component refetches the plan
@@ -211,6 +193,43 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
   };
 
   const overallAdherence = calculateOverallAdherence();
+  // -------------------------------------
+
+  // --- Calculate Weekly Adherence --- 
+  const calculateWeeklyConsistency = (week: DetailedWeek): number | null => {
+      let plannedInWeek = 0;
+      let completedInWeek = 0;
+      const today = startOfDay(new Date());
+      const weekStatus = getWeekStatus(week.start_date, week.end_date);
+
+      // Only calculate for past or current weeks
+      if (weekStatus === 'future') return null;
+
+      week.days.forEach(day => {
+          try {
+              const dayDate = parseISO(day.date);
+              // If it's a past week, consider all days.
+              // If it's the current week, only consider days up to today.
+              const considerDay = weekStatus === 'past' || (weekStatus === 'current' && dayDate <= today);
+
+              if (considerDay && day.workout_type !== 'Rest') {
+                  plannedInWeek++;
+                  if (day.status === 'completed') {
+                      completedInWeek++;
+                  }
+              }
+          } catch (e) {
+              console.error("Error parsing day date during weekly consistency calculation:", e);
+          }
+      });
+
+      if (plannedInWeek === 0) {
+          // If no non-rest workouts were planned in the relevant period, consistency is not applicable
+          return null; 
+      }
+
+      return Math.round((completedInWeek / plannedInWeek) * 100);
+  };
   // -------------------------------------
 
   // --- Function to handle status update API call --- 
@@ -298,6 +317,11 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
       }
   };
 
+  // --- Function to handle opening the detail modal --- 
+  const handleViewDetails = (workout: DailyWorkout) => {
+      setSelectedWorkout(workout);
+      setIsDetailModalOpen(true);
+  };
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -324,7 +348,7 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                {overallAdherence !== null && (
                     <div className="flex items-center text-sm text-muted-foreground pt-1">
                         <CheckCheck className="h-4 w-4 mr-2 flex-shrink-0 text-green-600" />
-                        <span>Training Consistency: <strong>{overallAdherence}%</strong></span>
+                        <span>Progress: <strong>{overallAdherence}%</strong></span>
                     </div>
                )}
                {/* ----------------------- */}
@@ -346,7 +370,7 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
           {/* --- End Header --- */}
 
           {/* Accordion for Weeks */}
-          <div className="pb-4">
+          <div className="pb-4"> 
               <Accordion type="single" collapsible defaultValue={defaultAccordionValue} className="w-full space-y-2">
                 {plan.weeks.map((week) => {
                     const weekStatus = getWeekStatus(week.start_date, week.end_date);
@@ -354,8 +378,8 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                     const isCurrentWeek = weekStatus === 'current';
 
                     return (
-                        <AccordionItem
-                            value={`week-${week.week_number}`}
+                        <AccordionItem 
+                            value={`week-${week.week_number}`} 
                             key={week.week_number}
                             className={cn(
                                 "border rounded-md overflow-hidden transition-all duration-300",
@@ -364,7 +388,7 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                 !isCurrentWeek && !isPastWeek && "border bg-card" // Future week default
                             )}
                         >
-                            <AccordionTrigger
+                            <AccordionTrigger 
                                 className={cn(
                                     "px-4 py-3 text-base font-medium hover:no-underline", // Adjusted font weight
                                     isPastWeek && "text-muted-foreground",
@@ -383,12 +407,37 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                                 ~{week.estimated_weekly_mileage}
                                             </Badge>
                                        )}
-                                       {isCurrentWeek && (
+                                       {/* Display Weekly Consistency */}
+                                       {(() => {
+                                           const weeklyConsistency = calculateWeeklyConsistency(week);
+                                           let label = "Progress:";
+
+                                           if (isCurrentWeek) {
+                                               try {
+                                                   const daysPassed = differenceInDays(startOfDay(new Date()), parseISO(week.start_date)) + 1;
+                                                   if (daysPassed < 4) {
+                                                       label = "Progress (so far):";
+                                                   }
+                                               } catch (e) {
+                                                   console.error("Error calculating days passed in week:", e);
+                                               }
+                                           }
+
+                                           if (weeklyConsistency !== null) {
+                                               return (
+                                                   <Badge variant="secondary" className="text-xs font-normal hidden md:inline-flex">
+                                                       {label} {weeklyConsistency}%
+                                                   </Badge>
+                                               );
+                                           }
+                                           return null;
+                                       })()}
+                                   {isCurrentWeek && (
                                             <Badge variant="default" className="text-xs">Current</Badge>
                                        )}
                                        {isPastWeek && (
                                              <Badge variant="secondary" className="text-xs">Done</Badge>
-                                       )}
+                                   )}
                                    </div>
                                 </div>
                             </AccordionTrigger>
@@ -409,9 +458,15 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                                 "flex items-start space-x-3 p-2 rounded-md transition-colors",
                                                 isPastDay && !isTodayDay && "opacity-60",
                                                 isTodayDay && "bg-secondary/50 ring-1 ring-primary/50",
-                                            )}>
+                                                "hover:bg-muted/40 cursor-pointer"
+                                            )}
+                                            onClick={() => handleViewDetails(day)}
+                                            >
                                                 {/* --- Status Update Buttons --- */}
-                                                <div className="flex flex-col items-center pt-1 space-y-1 w-6">
+                                                <div 
+                                                    className="flex flex-col items-center pt-1 space-y-1 w-6"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    >
                                                     {isLoading ? (
                                                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                                                     ) : (
@@ -419,7 +474,7 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                                             <Tooltip>
                                                                 <TooltipTrigger asChild>
                                                                     <button
-                                                                        onClick={() => handleUpdateStatus(day.date, 'completed')}
+                                                                        onClick={(e) => {e.stopPropagation(); handleUpdateStatus(day.date, 'completed');}}
                                                                         disabled={isLoading}
                                                                         className={cn(
                                                                             "rounded-full disabled:opacity-50",
@@ -434,7 +489,7 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                                             <Tooltip>
                                                                 <TooltipTrigger asChild>
                                                                     <button
-                                                                        onClick={() => handleUpdateStatus(day.date, 'skipped')}
+                                                                        onClick={(e) => {e.stopPropagation(); handleUpdateStatus(day.date, 'skipped');}}
                                                                         disabled={isLoading}
                                                                         className={cn(
                                                                             "rounded-full disabled:opacity-50",
@@ -451,7 +506,7 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                                                  <Tooltip>
                                                                      <TooltipTrigger asChild>
                                                                          <button
-                                                                             onClick={() => handleUpdateStatus(day.date, 'pending')}
+                                                                             onClick={(e) => {e.stopPropagation(); handleUpdateStatus(day.date, 'pending');}}
                                                                              disabled={isLoading}
                                                                              className="rounded-full text-muted-foreground/60 hover:text-muted-foreground disabled:opacity-50"
                                                                          >
@@ -466,22 +521,11 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                                 </div>
                                                 {/* ------------------------- */}
 
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        {/* Icon and Day */}
-                                                        <div className={cn("mt-1 flex-shrink-0 flex flex-col items-center w-12", isTodayDay && "font-semibold")}>
-                                                            <DayIcon className={cn("h-5 w-5", workoutTypeMap[day.workout_type]?.tooltip ? "cursor-help" : "")} />
-                                                             <span className="text-xs mt-0.5 text-muted-foreground">{day.day_of_week.substring(0,3)}</span>
-                                                             {/* Add checkmark placeholder */}
-                                                             {/* <Checkbox className="mt-1 h-4 w-4" disabled={isPastDay || isTodayDay} checked={day.status === 'completed'} /> */}
-                                                        </div>
-                                                    </TooltipTrigger>
-                                                    {workoutTypeMap[day.workout_type]?.tooltip && (
-                                                        <TooltipContent side="top" className="max-w-xs">
-                                                            <p><strong>{day.workout_type}:</strong> {workoutTypeMap[day.workout_type].tooltip}</p>
-                                                        </TooltipContent>
-                                                    )}
-                                                </Tooltip>
+                                                {/* Icon and Day of Week (No longer needs Tooltip wrapper as li is clickable) */}
+                                                <div className={cn("mt-1 flex-shrink-0 flex flex-col items-center w-12", isTodayDay && "font-semibold")}>
+                                                    <DayIcon className={cn("h-5 w-5")} />
+                                                    <span className="text-xs mt-0.5 text-muted-foreground">{day.day_of_week.substring(0,3)}</span>
+                                                </div>
 
                                                 {/* Workout Details */}
                                                 <div className="flex-grow">
@@ -518,11 +562,18 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                       <ul className="list-disc list-inside space-y-1 text-xs">
                           {plan.overall_notes.map((note, index) => (
                               <li key={index}>{note}</li>
-                          ))} 
+                          ))}
                       </ul>
                   </div>
               )}
           </div> {/* End padding div for accordion/notes */}
+
+          {/* Render the Detail Modal */}
+          <WorkoutDetailModal 
+              isOpen={isDetailModalOpen} 
+              onOpenChange={setIsDetailModalOpen} 
+              workout={selectedWorkout} 
+          />
         </div>
     </TooltipProvider>
   );
