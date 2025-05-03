@@ -334,7 +334,7 @@ function PlanPageContent() {
             if (!response.ok) {
                  let errorDetail = `API error: ${response.status}`;
                  let isOldFormat = false;
-                  let isServerError = false; // Track if it's a general server error (like 500)
+                 const isServerError = false; // Track if it's a general server error (like 500)
                  if (response.status === 409) { // <-- Check for our specific status code
                      isOldFormat = true;
                  }
