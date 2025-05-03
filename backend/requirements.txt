@@ -8,3 +8,10 @@ requests
 lxml
 beautifulsoup4
 certifi>=2024.2.2  # For SSL certificate verification
+gunicorn
+gotrue
+
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+cryptography

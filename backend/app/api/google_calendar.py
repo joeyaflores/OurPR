@@ -6,10 +6,10 @@ from typing import Optional, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from fastapi.responses import RedirectResponse
-from supabase import Client
+from supabase.client import Client
 from gotrue.types import User as SupabaseUser
 
-from ..services.supabase_client import get_supabase_client, get_supabase_service_client
+from ..services.supabase_client import get_supabase_client, get_supabase_service_client, supabase_service_client
 from ..api.auth import get_current_user
 from ..models.training_plan import DetailedTrainingPlan # To parse stored plan
 from ..services import google_calendar_service as gc_service
@@ -20,8 +20,6 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 # Simple in-memory store for state - replace with Redis/DB for production
 # Store state against a session ID or similar temporary identifier if possible
 _oauth_state_store = {}
-# --- New store for state -> user_id mapping --- 
-_oauth_state_user_map: Dict[str, str] = {}
 
 router = APIRouter(
     tags=["Google Calendar"] 
@@ -32,7 +30,8 @@ router = APIRouter(
 @router.get("/auth/google/login", summary="Initiate Google OAuth Flow")
 async def google_login(
     request: Request,
-    current_user: SupabaseUser = Depends(get_current_user) # <-- Need user here
+    current_user: SupabaseUser = Depends(get_current_user), # <-- Need user here
+    supabase: Client = Depends(get_supabase_service_client) # <-- Use service client for DB access
 ):
     """Redirects the user to Google's OAuth 2.0 consent screen."""
     user_id = current_user.id
@@ -42,11 +41,28 @@ async def google_login(
 
     # Generate state for CSRF protection
     state = secrets.token_urlsafe(32)
-    # --- Store state -> user_id mapping ---
-    # TODO: Use a proper persistent store (DB/Redis) with expiration for production
-    _oauth_state_user_map[state] = str(user_id) 
-    print(f"Stored state for user {user_id}: {state}") # Debug
-    # ---------------------------------------
+    # --- Store state in DB --- 
+    try:
+        state_data = {"state": state, "user_id": str(user_id)}
+        print(f"Attempting to insert state into DB: {state_data}") # Log data
+        insert_resp = supabase.table("oauth_states")\
+            .insert(state_data)\
+            .execute()
+        print(f"Supabase insert response: {insert_resp}") # Log response
+        # Check for errors
+        # Updated Check: Supabase v2 insert might return empty data list on success, check status_code
+        # if not insert_resp.data: 
+        if not hasattr(insert_resp, 'data') or (insert_resp.data is None and insert_resp.status_code // 100 != 2):
+            print(f"Error storing OAuth state for user {user_id}: {insert_resp}")
+            raise HTTPException(status_code=500, detail="Failed to initiate Google connection (state error).")
+        print(f"Stored state in DB for user {user_id}: {state}") # Debug
+    except Exception as e:
+        print(f"Database error storing OAuth state for user {user_id}: {e}")
+        # Also log traceback for unexpected errors
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Failed to initiate Google connection (database error).")
+    # -------------------------
 
     authorization_url, generated_state = flow.authorization_url(
         access_type='offline', # Request refresh token
@@ -56,7 +72,6 @@ async def google_login(
 
     print(f"Generated Google Auth URL for user {user_id}: {authorization_url}")
     # --- Return URL in JSON instead of redirecting --- 
-    # return RedirectResponse(authorization_url)
     return {"authorization_url": authorization_url}
     # ---------------------------------------------------
 
@@ -65,32 +80,60 @@ async def google_callback(
     request: Request, 
     code: str = Query(...),
     state: str = Query(...), # <-- Get state from Google redirect
-    supabase: Client = Depends(get_supabase_service_client),
+    supabase: Client = Depends(get_supabase_service_client), # <-- Use service client
     # --- REMOVE current_user dependency --- 
     # current_user: SupabaseUser = Depends(get_current_user) 
 ):
     """Handles the callback from Google, exchanges code for tokens, and stores refresh token."""
     
     # --- State Validation --- 
-    # TODO: Use a proper persistent store (DB/Redis) with expiration for production
-    user_id_str = _oauth_state_user_map.pop(state, None) # Retrieve user_id and remove state
+    user_id_str: Optional[str] = None
+    try:
+        # Find the state, ensuring it hasn't expired
+        select_resp = supabase.table("oauth_states")\
+            .select("user_id")\
+            .eq("state", state)\
+            .gt("expires_at", "now()")\
+            .maybe_single()\
+            .execute()
+
+        if select_resp.data:
+            user_id_str = str(select_resp.data['user_id'])
+            print(f"State validated successfully for user {user_id_str}") # Debug
+            
+            # --- Delete used state --- 
+            try:
+                delete_resp = supabase.table("oauth_states")\
+                    .delete()\
+                    .eq("state", state)\
+                    .execute()
+                # Log if delete fails, but don't necessarily block the flow
+                if not delete_resp.data:
+                    print(f"Warning: Failed to delete used OAuth state '{state}'. Response: {delete_resp}")
+            except Exception as del_e:
+                 print(f"Warning: Error deleting used OAuth state '{state}': {del_e}")
+            # -------------------------
+        else:
+            # Check if state exists but is expired
+            check_expired_resp = supabase.table("oauth_states").select("state").eq("state", state).maybe_single().execute()
+            if check_expired_resp.data:
+                 print(f"Expired OAuth state received: {state}")
+                 # Clean up expired state while we're here (optional)
+                 supabase.table("oauth_states").delete().eq("state", state).execute()
+                 raise HTTPException(status_code=400, detail="OAuth session expired. Please try connecting again.")
+            else:
+                 print(f"Invalid OAuth state received: {state}")
+                 raise HTTPException(status_code=400, detail="Invalid OAuth state parameter.")
+
+    except Exception as e:
+        print(f"Database error validating OAuth state '{state}': {e}")
+        raise HTTPException(status_code=500, detail="Server error during authentication.")
 
     if not user_id_str:
-        print(f"Invalid or expired OAuth state received: {state}")
-        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state parameter.")
+        # Should have been caught above, but as a safeguard
+        raise HTTPException(status_code=400, detail="Invalid OAuth state parameter (validation failed).")
     
-    print(f"State validated successfully for user {user_id_str}") # Debug
-    # Convert back to UUID if needed elsewhere, but string is fine for DB ops
-    # user_id = uuid.UUID(user_id_str)
     # ------------------------
-
-    # user_id = current_user.id # Old way
-
-    # --- State Validation (if using state) ---
-    # if state not in _oauth_state_store:
-    #     raise HTTPException(status_code=400, detail="Invalid OAuth state parameter.")
-    # del _oauth_state_store[state] # Consume state
-    # -----------------------------------------
 
     tokens = await gc_service.exchange_code_for_tokens(code)
     if not tokens:
@@ -129,7 +172,6 @@ async def google_callback(
 
     # Redirect back to the frontend, indicating success
     # TODO: Make the redirect target configurable
-    # redirect_url = f"{FRONTEND_URL}/settings?google_connected=true" # Example redirect
     redirect_url = f"{FRONTEND_URL}/plan?google_connected=true" # <-- Redirect to /plan page
     return RedirectResponse(redirect_url)
 
@@ -148,7 +190,7 @@ calendar_router = APIRouter(
 )
 async def sync_plan_to_google_calendar(
     race_id: uuid.UUID,
-    supabase: Client = Depends(get_supabase_client),
+    supabase: Client = Depends(get_supabase_client), # <-- This should use get_supabase_client (authenticated)
     current_user: SupabaseUser = Depends(get_current_user)
 ):
     """Exports the detailed training plan for a given race to the user's primary Google Calendar."""
@@ -157,8 +199,12 @@ async def sync_plan_to_google_calendar(
     # 1. Get Refresh Token
     encrypted_refresh_token: Optional[str] = None
     # TODO: Fetch encrypted_refresh_token from 'user_google_auth' table for user_id
+    # --- Need Service Client for this internal fetch --- 
+    # Ideally, inject service client separately or pass it down
+    service_supabase = get_supabase_service_client() # Get service client directly (simpler for now)
+    # ---------------------------------------------------
     try:
-        response = supabase.table("user_google_auth")\
+        response = service_supabase.table("user_google_auth")\
             .select("encrypted_google_refresh_token")\
             .eq("user_id", user_id)\
             .maybe_single()\
@@ -184,7 +230,7 @@ async def sync_plan_to_google_calendar(
     if not calendar_service:
         raise HTTPException(status_code=503, detail="Could not connect to Google Calendar service.")
 
-    # 3. Fetch the Training Plan
+    # 3. Fetch the Training Plan (using the user-authenticated client)
     try:
         response = supabase.table("user_generated_plans")\
             .select("id, generated_plan")\
@@ -273,7 +319,7 @@ async def sync_plan_to_google_calendar(
                 # -------------------------------------
                 
                 # Create event
-                created_event = await gc_service.create_calendar_event(
+                created_event = gc_service.create_calendar_event(
                     service=calendar_service,
                     summary=day.workout_type, # Pass workout_type as summary (Title formatting happens in service)
                     description=description, # Pass newly formatted HTML description
@@ -302,10 +348,12 @@ async def sync_plan_to_google_calendar(
     if plan_updated:
         try:
             updated_plan_json = plan.model_dump(mode='json')
-            update_response = supabase.table("user_generated_plans")\
+            # --- Need service client to update plan IDs --- 
+            update_response = service_supabase.table("user_generated_plans")\
                 .update({"generated_plan": updated_plan_json})\
                 .eq("id", plan_record_id)\
                 .execute()
+            # ---------------------------------------------------
             
             # Basic check for update success
             if hasattr(update_response, 'error') and update_response.error:
@@ -328,7 +376,7 @@ async def sync_plan_to_google_calendar(
 )
 async def remove_plan_from_google_calendar(
     race_id: uuid.UUID,
-    supabase: Client = Depends(get_supabase_client),
+    supabase: Client = Depends(get_supabase_client), # <-- Use authenticated client
     current_user: SupabaseUser = Depends(get_current_user)
 ):
     """Removes previously synced training plan events from the user's primary Google Calendar."""
@@ -336,9 +384,11 @@ async def remove_plan_from_google_calendar(
 
     # 1. Get Refresh Token (Similar to POST)
     encrypted_refresh_token: Optional[str] = None
-    # TODO: Fetch from 'user_google_auth' table
+    # --- Need Service Client --- 
+    service_supabase = get_supabase_service_client()
+    # ---------------------------
     try:
-        response = supabase.table("user_google_auth")\
+        response = service_supabase.table("user_google_auth")\
             .select("encrypted_google_refresh_token")\
             .eq("user_id", user_id)\
             .maybe_single()\
@@ -359,7 +409,7 @@ async def remove_plan_from_google_calendar(
     calendar_service = await gc_service.get_calendar_service(credentials)
     if not calendar_service: raise HTTPException(status_code=503, detail="Could not connect to Google Calendar service.")
 
-    # 3. Fetch the Training Plan (Similar to POST)
+    # 3. Fetch the Training Plan (using authenticated client)
     try:
         response = supabase.table("user_generated_plans")\
             .select("id, generated_plan")\
@@ -401,10 +451,12 @@ async def remove_plan_from_google_calendar(
     if plan_updated:
         try:
             updated_plan_json = plan.model_dump(mode='json')
-            update_response = supabase.table("user_generated_plans")\
+            # --- Need service client to update plan IDs --- 
+            update_response = service_supabase.table("user_generated_plans")\
                 .update({"generated_plan": updated_plan_json})\
                 .eq("id", plan_record_id)\
                 .execute()
+            # ---------------------------------------------------
             # Log errors if update fails, but don't fail the request
             if hasattr(update_response, 'error') and update_response.error:
                  print(f"Supabase update error after delete sync: {update_response.error}")
@@ -415,6 +467,96 @@ async def remove_plan_from_google_calendar(
 
     # No body needed for 204 response
     return
+
+# === Add Status Check Endpoint ===
+@calendar_router.get(
+    "/status",
+    status_code=status.HTTP_200_OK,
+    summary="Check Google Calendar Connection Status"
+)
+async def check_google_connection_status(
+    # No supabase client needed via dependency if using the global one?
+    # Or inject service client if preferred
+    # supabase: Client = Depends(get_supabase_service_client), 
+    current_user: SupabaseUser = Depends(get_current_user)
+):
+    """Checks if a valid Google refresh token exists for the current user."""
+    user_id = str(current_user.id)
+    is_connected = False
+    
+    # Use the globally initialized service client (ensure it's available)
+    # Or use the dependency injection approach as commented out above
+    if not supabase_service_client:
+         print("Warning: Service client not available for status check.")
+         # Return false, but this indicates a server config issue
+         return {"isConnected": False}
+
+    try:
+        response = supabase_service_client.table("user_google_auth")\
+            .select("encrypted_google_refresh_token", count='exact')\
+            .eq("user_id", user_id)\
+            .limit(1)\
+            .execute()
+        
+        # Check if a row exists for the user
+        if response.count and response.count > 0:
+            # Optional but recommended: Try decrypting the token to ensure it's valid
+            token_to_check = response.data[0].get("encrypted_google_refresh_token")
+            if token_to_check and gc_service.decrypt_token(token_to_check):
+                 is_connected = True
+            else:
+                print(f"Found token entry for user {user_id}, but token is invalid or decryption failed.")
+                # Consider deleting the invalid token row here?
+        
+    except Exception as e:
+        print(f"Error checking Google connection status for user {user_id}: {e}")
+        # Don't expose DB error, return false status
+
+    return {"isConnected": is_connected}
+# === End Status Check Endpoint ===
+
+# === Add Disconnect Endpoint ===
+@calendar_router.delete(
+    "/connection",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Disconnect Google Account"
+)
+async def disconnect_google_account(
+    # Use service client to delete the connection info
+    supabase: Client = Depends(get_supabase_service_client),
+    current_user: SupabaseUser = Depends(get_current_user)
+):
+    """Deletes the stored Google refresh token for the authenticated user."""
+    user_id = str(current_user.id)
+
+    try:
+        delete_resp = supabase.table("user_google_auth")\
+            .delete()\
+            .eq("user_id", user_id)\
+            .execute()
+        
+        # Check if deletion occurred or if the record didn't exist
+        # Supabase delete often returns empty data list on success.
+        # We can check the count if available or just assume success if no error.
+        # count = delete_resp.count if hasattr(delete_resp, 'count') else None
+        # print(f"Google connection deletion for user {user_id} count: {count}")
+        
+        # Log if an error occurred explicitly
+        if hasattr(delete_resp, 'error') and delete_resp.error:
+            print(f"Error deleting Google connection for user {user_id}: {delete_resp.error}")
+            # Don't expose details, return generic server error
+            raise HTTPException(status_code=500, detail="Failed to disconnect Google account.")
+        
+        print(f"Successfully deleted Google connection info for user {user_id}")
+        # No response body needed for 204
+        return
+
+    except HTTPException as e:
+        raise e # Re-raise specific HTTP exceptions
+    except Exception as e:
+        print(f"Unexpected database error deleting connection for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to disconnect Google account due to a server error.")
+# === End Disconnect Endpoint ===
 
 # Combine routers if needed, or include them individually in main app
 # Example: app.include_router(router, prefix="/api/auth") # Or whatever prefix makes sense

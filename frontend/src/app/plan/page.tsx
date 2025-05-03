@@ -202,6 +202,11 @@ export default function MyPlanPage() {
                 setUserPrs([]);
             } finally {
                 setIsLoading(false);
+                // --- Call server status check AFTER fetching user data --- 
+                if (currentUser) { // Only check if user is logged in
+                    checkGoogleConnectionStatus();
+                }
+                // ---------------------------------------------------------
             }
         };
 
@@ -614,6 +619,80 @@ export default function MyPlanPage() {
     };
     // ------------------------------------------------------
 
+    // --- Function to check Google Connection Status (Server-Side) --- 
+    const checkGoogleConnectionStatus = async () => {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
+        let connected = false; // Default to false
+
+        if (accessToken) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/users/me/google-calendar/status`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    connected = data.isConnected;
+                } else {
+                    // Log error but assume not connected
+                    console.error("API error checking Google status:", response.status);
+                }
+            } catch (e) {
+                console.error("Network error checking Google connection status:", e);
+            }
+        }
+        
+        // Update state based on server check
+        setIsGoogleConnected(connected); 
+        console.log("[PlanPage] Google Connection Status from server:", connected);
+    };
+    // ------------------------------------------------------------------
+
+    // --- Function to handle DISCONNECTING Google Account --- 
+    const handleDisconnectGoogle = async () => {
+        // Add loading state maybe? setIsDisconnecting(true)
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
+
+        if (!accessToken) {
+            toast.error("Authentication error.");
+            // setIsDisconnecting(false)
+            return;
+        }
+
+        const url = `${API_BASE_URL}/api/users/me/google-calendar/connection`;
+
+        try {
+            const response = await fetch(url, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${accessToken}` },
+            });
+
+            if (!response.ok && response.status !== 204) {
+                let errorDetail = `API error: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorDetail = errorData.detail || errorDetail;
+                } catch { /* Ignore */ }
+                throw new Error(errorDetail);
+            }
+
+            // Success!
+            toast.success("Google Account disconnected.");
+            setIsGoogleConnected(false); // Update frontend state
+
+        } catch (e: any) {
+            console.error("Failed to disconnect Google Account:", e);
+            toast.error("Disconnect Failed", { description: e.message });
+        } finally {
+            // Reset loading state if needed
+            // setIsDisconnecting(false);
+        }
+    };
+    // ----------------------------------------------------------
+
     // --- Render component --- 
     return (
         <div className="container mx-auto p-4 md:p-6">
@@ -628,13 +707,18 @@ export default function MyPlanPage() {
 
             {/* --- Google Connection Button Area (Moved Here) --- */}
             {!isLoading && !error && (
-                 <div className="mb-6 text-center p-4 border rounded-md">
+                 <div className="mb-6 text-center p-4 border rounded-md flex flex-col sm:flex-row items-center justify-center gap-4">
                      {isGoogleConnected ? (
-                         <div className="flex items-center justify-center text-green-600">
-                              <CalendarPlus className="h-5 w-5 mr-2" />
-                              <span>Google Calendar Connected</span>
-                              {/* Optional: Add a disconnect button here */}
-                         </div>
+                        <>
+                          <div className="flex items-center justify-center text-green-600 font-medium">
+                               <CalendarPlus className="h-5 w-5 mr-2" />
+                               <span>Google Calendar Connected</span>
+                          </div>
+                          <Button onClick={handleDisconnectGoogle} variant="outline" size="sm">
+                              <LinkIcon className="mr-2 h-4 w-4" />
+                              Disconnect
+                           </Button>
+                        </>
                      ) : (
                          <Button onClick={handleConnectGoogle} variant="outline">
                              <LinkIcon className="mr-2 h-4 w-4" />
