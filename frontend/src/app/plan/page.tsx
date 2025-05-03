@@ -101,6 +101,7 @@ function PlanPageContent() {
     const [isDeletingPlan, setIsDeletingPlan] = useState(false); // <-- Track delete loading state
     const [raceIdBeingDeleted, setRaceIdBeingDeleted] = useState<string | number | null>(null); // <-- Track which plan is deleting
     const [isOldPlanFormatError, setIsOldPlanFormatError] = useState(false); // <-- State for old format error
+    const [isServerErrorOnView, setIsServerErrorOnView] = useState(false); // <-- NEW State for server error on view
     const [loadingMessageIndex, setLoadingMessageIndex] = useState(0); // State for animated message
     // --- State for Google Connection ---
     const [isGoogleConnected, setIsGoogleConnected] = useState(false); // Assume not connected initially
@@ -308,6 +309,7 @@ function PlanPageContent() {
         setIsViewingPlan(true);
         setPlanGenerationError(null);
         setIsOldPlanFormatError(false); // <-- Reset old format error state
+        setIsServerErrorOnView(false); // <-- Reset server error state
         setCurrentPlanOutline(null);
         setSelectedRaceIdForPlan(raceId);
         setIsPlanModalOpen(true);
@@ -332,6 +334,7 @@ function PlanPageContent() {
             if (!response.ok) {
                  let errorDetail = `API error: ${response.status}`;
                  let isOldFormat = false;
+                  let isServerError = false; // Track if it's a general server error (like 500)
                  if (response.status === 409) { // <-- Check for our specific status code
                      isOldFormat = true;
                  }
@@ -341,19 +344,23 @@ function PlanPageContent() {
                      errorDetail = errorData.detail || errorDetail;
                  } catch { /* Ignore */ }
                  
-                 // If it's the old format, set specific state
-                 if (isOldFormat) {
-                     setIsOldPlanFormatError(true);
-                     setPlanGenerationError(errorDetail); // Use the message from API
-                     setCurrentPlanOutline(null); // Ensure no plan is displayed
-                     setIsViewingPlan(false); // Stop loading indicator
-                     return; // Stop further processing
-                 }
-                 // Handle other errors (like 404)
-                 if (response.status === 404) {
-                     errorDetail = "No saved plan found for this race. You can generate one!";
-                 }
-                 throw new Error(errorDetail);
+                  // If it's the old format, set specific state
+                  if (isOldFormat) {
+                      setIsOldPlanFormatError(true);
+                      setPlanGenerationError(errorDetail); // Use the message from API
+                  } else if (response.status === 404) {
+                      // Handle 404 specifically
+                      errorDetail = "No saved plan found for this race. You can generate one!";
+                      setPlanGenerationError(errorDetail);
+                  } else {
+                      // For other errors (e.g., 500), mark as server error
+                      setIsServerErrorOnView(true);
+                      setPlanGenerationError(errorDetail); // Use the message from API
+                  }
+
+                 setCurrentPlanOutline(null); // Ensure no plan is displayed on error
+                 setIsViewingPlan(false); // Stop loading indicator
+                 return; // Stop further processing
             }
 
             // If response.ok (meaning 200 OK)
@@ -850,7 +857,7 @@ function PlanPageContent() {
                     {/* Modal Content Area - Reduce max height */}
                     <div className="mt-4 max-h-[60vh] overflow-y-auto pr-2">
                         {/* Loading Indicator */}
-                        {(isPlanGenerating || isViewingPlan) && !planGenerationError && !isOldPlanFormatError && (
+                        {(isPlanGenerating || isViewingPlan) && !planGenerationError && !isOldPlanFormatError && !isServerErrorOnView && (
                             <div className="flex items-center justify-center p-8 min-h-[80px]"> {/* Added min-h for layout consistency */}
                                 <Loader2 className="h-8 w-8 animate-spin text-primary flex-shrink-0" />
                                 {isPlanGenerating ? (
@@ -872,13 +879,17 @@ function PlanPageContent() {
                             </div>
                         )}
                         
-                        {/* Error Display (Includes Old Format Message) */} 
-                        {(planGenerationError || isOldPlanFormatError) && (
+                        {/* Error Display (Includes Old Format Message & Server Error) */} 
+                        {(planGenerationError || isOldPlanFormatError || isServerErrorOnView) && (
                             <div className="text-destructive bg-destructive/10 p-4 rounded-md text-center space-y-2">
-                                <p className="font-medium">{isOldPlanFormatError ? "Outdated Plan Format" : "Error"}</p>
+                                <p className="font-medium">
+                                    {isOldPlanFormatError ? "Outdated Plan Format" : 
+                                    isServerErrorOnView ? "Error Loading Plan" : 
+                                    planGenerationError?.includes("No saved plan found") ? "Plan Not Found" : planGenerationError ? "Request Failed" : "Error"}
+                                </p>
                                 <p className="text-sm">{planGenerationError || "An unexpected error occurred."}</p>
-                                {/* Show Delete/Regenerate button only for old format error */}
-                                {isOldPlanFormatError && selectedRaceIdForPlan && (
+                                {/* Show Delete/Regenerate button for old format OR server error */}
+                                {(isOldPlanFormatError || isServerErrorOnView) && selectedRaceIdForPlan && (
                                     <Button
                                         variant="destructive"
                                         size="sm"
@@ -889,6 +900,7 @@ function PlanPageContent() {
                                             // Check if deletion was successful before regenerating?
                                             // For simplicity now, just trigger generation after delete attempt
                                             setIsOldPlanFormatError(false); // Clear old format error
+                                            setIsServerErrorOnView(false); // Clear server error state as well
                                             handleGeneratePlanRequest(selectedRaceIdForPlan); // Trigger generation
                                         }}
                                     >
@@ -896,7 +908,7 @@ function PlanPageContent() {
                                     </Button>
                                 )}
                                 {/* Original button for 404 error */}
-                                {planGenerationError?.includes("No saved plan found") && !isOldPlanFormatError && (
+                                {planGenerationError?.includes("No saved plan found") && !isOldPlanFormatError && !isServerErrorOnView && (
                                     <Button 
                                         variant="link" 
                                         className="mt-2 h-auto p-0 text-destructive" 
@@ -913,7 +925,7 @@ function PlanPageContent() {
                             </div>
                         )}
 
-                        {currentPlanOutline && !planGenerationError && !isOldPlanFormatError && (
+                        {currentPlanOutline && !planGenerationError && !isOldPlanFormatError && !isServerErrorOnView && (
                             // Find the selected race to pass its date and PR
                             (() => {
                                 const selectedRace = racesWithDetails.find(r => r.id === selectedRaceIdForPlan);
@@ -935,7 +947,7 @@ function PlanPageContent() {
                     </div>
 
                     {/* Modal Footer Actions */}
-                     {currentPlanOutline && !planGenerationError && !isOldPlanFormatError && (planWasJustGenerated || true /* Allow re-saving? */) && (
+                     {currentPlanOutline && !planGenerationError && !isOldPlanFormatError && !isServerErrorOnView && (planWasJustGenerated || true /* Allow re-saving? */) && (
                          <div className="mt-6 flex justify-end gap-2 border-t pt-4">
                              <DialogClose asChild>
                                  <Button variant="outline">Close</Button>
