@@ -775,7 +775,7 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                {overallAdherence !== null && (
                     <div className="flex items-center text-sm text-muted-foreground pt-1">
                         <CheckCheck className="h-4 w-4 mr-2 flex-shrink-0 text-green-600" />
-                        <span>Progress: <strong>{overallAdherence}%</strong></span>
+                        <span>Consistency: <strong>{overallAdherence}%</strong></span>
                     </div>
                )}
                {/* ----------------------- */}
