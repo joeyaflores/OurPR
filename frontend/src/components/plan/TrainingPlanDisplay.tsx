@@ -59,6 +59,8 @@ import { toast } from "sonner";
 import { workoutTypeMap, getWorkoutIcon } from './planUtils';
 import { WorkoutDetailModal } from './WorkoutDetailModal';
 import { EditWorkoutModal } from './EditWorkoutModal';
+import Confetti from 'react-confetti';
+import { AddNoteModal } from './AddNoteModal';
 
 // API Base URL (Consider moving to config)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -135,6 +137,11 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
     // --- State for Editing Workout ---
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [workoutToEdit, setWorkoutToEdit] = useState<DailyWorkout | null>(null);
+    // --- State for Confetti ---
+    const [confettiPieces, setConfettiPieces] = useState(0);
+    // --- State for Add Note Modal ---
+    const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
+    const [dayDateForNote, setDayDateForNote] = useState<string | null>(null);
     // -------------------------------------------
 
     // Update local state if the initial plan prop changes
@@ -258,28 +265,25 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
 
   // --- Function to handle status update API call --- 
   const handleUpdateStatus = async (dayDate: string, newStatus: DailyWorkout['status']) => {
-      setUpdatingDayDate(dayDate); // Set loading state for this specific day
+      setUpdatingDayDate(dayDate); // Set loading state *before* any async/modal logic
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
       const accessToken = session?.access_token;
       
       if (!accessToken) {
           toast.error("Authentication error. Please log in again.");
-          setUpdatingDayDate(null); // Clear loading state
           return;
       }
 
       if (!raceId) {
           toast.error("Error: Could not identify the race for this plan.");
-          setUpdatingDayDate(null);
           return;
       }
 
       const url = `${API_BASE_URL}/api/users/me/races/${raceId}/plan/days/${dayDate}`;
 
-      // --- Optimistic UI Update --- 
-      // Temporarily update the local state before the API call completes
       const originalPlan = JSON.parse(JSON.stringify(plan)); // Deep copy for potential rollback
+
       const updatedPlanOptimistic = JSON.parse(JSON.stringify(plan)); // Deep copy to modify
       let dayUpdatedOptimistic = false;
       for (const week of updatedPlanOptimistic.weeks) {
@@ -287,6 +291,15 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
               if (day.date === dayDate) {
                   day.status = newStatus;
                   dayUpdatedOptimistic = true;
+
+                  // --- Trigger Confetti & Note Modal (if completing) --- 
+                  if (newStatus === 'completed') {
+                      setConfettiPieces(400); // More pieces!
+                      setTimeout(() => setConfettiPieces(0), 2000); // Stop after 2 seconds
+                      setDayDateForNote(dayDate); // Store date for the note modal
+                      setIsAddNoteModalOpen(true); // Open the note modal
+                  }
+                  // --------------------------------------------------
                   break;
               }
           }
@@ -295,7 +308,6 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
       if(dayUpdatedOptimistic) {
           setPlan(updatedPlanOptimistic);
       }
-      // -----------------------------
 
       try {
           const response = await fetch(url, {
@@ -320,7 +332,6 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
           // We could potentially update the local state with the response data if needed,
           // but the optimistic update already did it.
           const updatedDay: DailyWorkout = await response.json(); 
-          // console.log("Successfully updated status for", dayDate, "to", updatedDay.status);
           
           // Optional: Call the onPlanUpdate callback if provided, passing the *optimistically* updated plan
           // This allows the parent component to know the state has changed.
@@ -633,10 +644,46 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
         if(onPlanUpdate) onPlanUpdate(originalPlan); // Notify parent of rollback
     }    
   };
-  // ------------------------------------------------------
+
+  // --- Function to handle saving the note from the modal ---
+  const handleSaveNote = (targetDayDate: string, note: string) => {
+    console.log(`Saving note for ${targetDayDate}:`, note);
+    const originalPlanForRollback = JSON.parse(JSON.stringify(plan)); // Deep copy for rollback
+    let noteAdded = false;
+
+    const updatedPlanWithNote = JSON.parse(JSON.stringify(plan));
+    // Find the day again and add the note
+    for (const week of updatedPlanWithNote.weeks) {
+        const day = week.days.find((d: DailyWorkout) => d.date === targetDayDate);
+        if (day) {
+            const existingNotes = day.notes || [];
+            day.notes = [note, ...existingNotes]; // Prepend new note (no prefix)
+            noteAdded = true;
+            break;
+        }
+    }
+
+    if (noteAdded) {
+        setPlan(updatedPlanWithNote); // Optimistic UI update for the note
+        // Now save the *entire* plan with the added note
+        saveUpdatedPlanToBackend(updatedPlanWithNote, originalPlanForRollback);
+    } else {
+        console.error("Could not find day to add note to after modal save.");
+        toast.error("Note Error", { description: "Could not save note to the plan." });
+    }
+  };
+  // -----------------------------------------------------------
 
   return (
     <TooltipProvider delayDuration={150}>
+        {/* Render Confetti conditionally based on state */} 
+        <Confetti 
+            numberOfPieces={confettiPieces} 
+            recycle={false} 
+            // Optional: Set width/height to cover viewport if needed 
+            // width={window.innerWidth} 
+            // height={window.innerHeight} 
+        /> 
         <div className="space-y-4">
           {/* --- Header Info --- */}
           {/* Use background based on race date? */}
@@ -1021,6 +1068,14 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
               onOpenChange={setIsEditModalOpen} 
               workout={workoutToEdit} 
               onSave={handleUpdateWorkout} 
+          /> 
+
+          {/* Render the Add Note Modal */} 
+          <AddNoteModal 
+              isOpen={isAddNoteModalOpen} 
+              onOpenChange={setIsAddNoteModalOpen} 
+              dayDate={dayDateForNote} 
+              onSaveNote={handleSaveNote} 
           /> 
         </div>
     </TooltipProvider>
