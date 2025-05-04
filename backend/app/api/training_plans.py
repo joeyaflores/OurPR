@@ -4,6 +4,7 @@ import json
 import google.generativeai as genai
 from datetime import date, timedelta, datetime
 import re # <-- Import regex module
+from typing import Optional, Literal # <-- Import Optional & Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from supabase import Client
@@ -19,6 +20,15 @@ from ..models.training_plan import (
 from ..models.race import Race # Import race model
 from ..models.user_pr import UserPr # Import PR model
 from .auth import get_current_user # Import auth dependency
+
+# --- Updated Request Body Model --- 
+class PlanGenerationRequest(BaseModel):
+    goal_time: Optional[str] = None
+    current_weekly_mileage: Optional[int] = None
+    peak_weekly_mileage: Optional[int] = None
+    preferred_running_days: Optional[Literal[3, 4, 5, 6]] = None # Limit options
+    preferred_long_run_day: Optional[Literal['Saturday', 'Sunday']] = None # Limit options
+# --------------------------------
 
 # --- Gemini API Configuration (Copied from race_query.py - Consider refactoring to a service) ---
 try:
@@ -67,13 +77,22 @@ def get_monday_of_week(target_date: date, weeks_offset: int) -> date:
 )
 async def generate_training_plan(
     race_id: uuid.UUID,
+    request_data: PlanGenerationRequest, # <-- Add request body parameter
     supabase: Client = Depends(get_supabase_client),
     current_user: SupabaseUser = Depends(get_current_user)
 ):
     """Generates a detailed **daily** training plan using AI based on a
-    planned race and the user's relevant PR.
+    planned race, the user's relevant PR, and optional user preferences.
     """
     user_id = current_user.id
+    
+    # --- Extract data from request body --- 
+    user_goal_time_str = request_data.goal_time or "Not specified"
+    current_mileage_str = f"{request_data.current_weekly_mileage} miles/week" if request_data.current_weekly_mileage else "Not specified"
+    peak_mileage_str = f"{request_data.peak_weekly_mileage} miles/week" if request_data.peak_weekly_mileage else "Not specified"
+    running_days_str = f"{request_data.preferred_running_days} days/week" if request_data.preferred_running_days else "Not specified"
+    long_run_day_str = request_data.preferred_long_run_day or "Weekend (Sat/Sun preferred)" 
+    # -------------------------------------
 
     # 1. Fetch Race Details
     try:
@@ -170,7 +189,7 @@ async def generate_training_plan(
     if not gemini_api_key:
         raise HTTPException(status_code=503, detail="AI service is not configured.")
 
-    # --- Construct the DETAILED Prompt ---
+    # --- Construct the ENHANCED Prompt --- 
     prompt = f"""
     Act as an expert running coach creating a **detailed, day-by-day** training plan for a runner preparing for the '{race.name}'.
 
@@ -178,28 +197,45 @@ async def generate_training_plan(
     - Distance: {race.distance or 'Unknown'}
     - Race Date: {race.date}
     - Total Plan Weeks: {weeks_until}
-    Runner's Personal Record (PR) for {race.distance or 'this distance'}: {user_pr_str}
+
+    Runner's Context:
+    - Personal Record (PR) for {race.distance or 'this distance'}: {user_pr_str}
+    - Goal Time: {user_goal_time_str}
+    - Current Weekly Mileage: {current_mileage_str}
+    - Target Peak Weekly Mileage: {peak_mileage_str}
+    - Preferred Running Days per Week: {running_days_str}
+    - Preferred Long Run Day: {long_run_day_str}
 
     Instructions:
-    - Provide a plan starting from Week 1 up to Week {weeks_until}.
+    - Provide a plan starting from Week 1 up to Week {weeks_until}, structured as a JSON object matching the target structure below.
     - For each week, provide:
-        - A `weekly_focus` string (e.g., "Base building", "Peak mileage", "Taper").
-        - An `estimated_weekly_mileage` string (e.g., "25-30 miles").
-        - A `days` array containing exactly 7 objects, one for each day (Monday to Sunday).
-    - For each day object within the `days` array, provide:
-        - `day_of_week`: string ("Monday", "Tuesday", ..., "Sunday").
-        - `workout_type`: string (Choose from: 'Easy Run', 'Tempo Run', 'Intervals', 'Speed Work', 'Long Run', 'Rest', 'Cross-Training', 'Strength', 'Race Pace', 'Warm-up', 'Cool-down', 'Other').
-        - `description`: string (Clear instruction, e.g., "4 miles at conversational pace", "Rest day", "45 min cycling - easy effort", "6x400m @ 5K pace w/ 400m jog recovery").
-        - `distance`: Optional string (e.g., "4 miles", "800 meters").
-        - `duration`: Optional string (e.g., "30 minutes", "1 hour").
-        - `intensity`: Optional string (e.g., "Easy", "Conversational", "Tempo", "5K Pace", "HR Zone 2").
-        - `notes`: Optional array of strings (short tips or variations, e.g., ["Focus on form", "Listen to your body"]).
-    - Ensure a logical progression: build mileage gradually, include key workouts (long run, intensity), incorporate rest/recovery (at least 1-2 rest days/week), and a taper (1-3 weeks).
-    - The long run should typically be on Saturday or Sunday.
-    - Adapt the plan intensity/volume based on the race distance and the provided PR ({user_pr_str}). If PR is unavailable, assume intermediate fitness. Focus on safe progression.
-    - Include `overall_notes` as an array of general advice strings.
-    - Structure the output strictly as a JSON object matching this **target structure** (Do NOT include date or status fields for days, Python will add them):
+        - `week_number`
+        - `weekly_focus`
+        - `estimated_weekly_mileage` (string): **This MUST accurately reflect the sum of distances from the `days` array for that week.** For example, if the daily distances add up to 61 miles, the estimate should be '~61 miles' or '60-62 miles'.
+        - A `days` array.
+    - **Each `days` array MUST contain exactly 7 day objects, one for each day from Monday to Sunday.**
+    - For each day object **within the `days` array**, you **MUST** provide the following fields:
+        - `day_of_week`: **MUST contain the string name** for the day (e.g., "Monday", "Tuesday", ..., "Sunday"). **IT CANNOT BE EMPTY OR A WORKOUT TYPE.**
+        - `workout_type`: **MUST contain *exactly* one** of the following allowed strings: 'Easy Run', 'Tempo Run', 'Intervals', 'Speed Work', 'Long Run', 'Rest', 'Cross-Training', 'Strength', 'Race Pace', 'Warm-up', 'Cool-down', 'Other'. **IT CANNOT BE A DAY NAME OR CONTAIN EXTRA DESCRIPTIONS.**
+        - `description`: A string detailing the workout (e.g., "4 miles conversational pace + 4x100m strides"). Put combined activities/details here.
+        - Optional: `distance` (string), `duration` (string), `intensity` (string), `notes` (array of strings).
+        - **Include calculated pace suggestions (e.g., in min/mile) within the `description` for relevant workouts (Tempo, Intervals, Speed Work, Race Pace). Optionally include pace ranges for Easy/Long runs.** Base paces on the Runner's Context (PR, Goal Time). **Provide paces ONLY in minutes per mile (min/mile) format.**
+    - **Crucially, tailor the plan using ALL the provided 'Runner's Context':**
+        - Base the starting weekly mileage and initial long run distance on the 'Current Weekly Mileage'. If not specified, assume a reasonable starting point for the race distance.
+        - Gradually build weekly volume towards the 'Target Peak Weekly Mileage'. Adjust the target peak if it seems unrealistic (too high or too low for the race distance/duration) and note the adjustment in `overall_notes`.
+        - Distribute the running workouts across the 'Preferred Running Days per Week'. If not specified, use a standard 4-5 days of running. Schedule rest or cross-training on the remaining days (aim for 1-2 full rest days minimum).
+        - Schedule the weekly 'Long Run' on the 'Preferred Long Run Day'. If flexible or not specified, choose Saturday or Sunday.
+        - Adapt intensity/volume based on the race distance, PR, AND Goal Time. Tailor paces for key workouts (tempo, intervals) towards the Goal Time, using the PR as a baseline.
+        - If the Goal Time seems very ambitious compared to the PR, create a challenging but realistic plan. Note the goal's difficulty in `overall_notes`.
+        - If Goal Time is 'Not specified', generate a plan based primarily on PR and other preferences.
+        - Ensure logical progression, safe mileage increases, and a 1-3 week taper.
+    - Include `overall_notes` as an array of general advice strings, including any notes about adjustments made based on runner context.
+    - **For the actual Race Day event itself (usually the last Sunday), use `workout_type: \'Other\'` and set the `description` to something like "RACE DAY! {{Race Name}}".**
+    - **IMPORTANT:** The output **MUST** be a single JSON object enclosed in ```json ... ```. 
+    - **DO NOT** include any comments (like `// ...`) or explanatory text *within* the JSON structure itself. All explanations or notes about adjustments should be in the `overall_notes` array.
+    - Ensure **all** weeks from 1 to {weeks_until} are present in the `weeks` array, each with a fully defined `days` array containing 7 day objects.
 
+    Target JSON Structure (Example Snippets - Adhere strictly to this format):
     ```json
     {{
       "race_name": "{race.name}",
@@ -210,32 +246,20 @@ async def generate_training_plan(
         {{
           "week_number": 1,
           "weekly_focus": "Initial base building and consistency",
-          "estimated_weekly_mileage": "15-20 miles",
+          "estimated_weekly_mileage": "15-20 miles", // Reflects starting point
           "days": [
-            {{"day_of_week": "Monday", "workout_type": "Rest", "description": "Rest day"}},
-            {{"day_of_week": "Tuesday", "workout_type": "Easy Run", "description": "3 miles at conversational pace", "distance": "3 miles", "intensity": "Easy"}},
-            {{"day_of_week": "Wednesday", "workout_type": "Easy Run", "description": "4 miles easy", "distance": "4 miles", "intensity": "Easy"}},
-            {{"day_of_week": "Thursday", "workout_type": "Rest", "description": "Rest or optional light cross-training (30 min)"}},
-            {{"day_of_week": "Friday", "workout_type": "Easy Run", "description": "3 miles easy", "distance": "3 miles", "intensity": "Easy"}},
-            {{"day_of_week": "Saturday", "workout_type": "Long Run", "description": "6 miles at easy, conversational pace", "distance": "6 miles", "intensity": "Easy"}},
-            {{"day_of_week": "Sunday", "workout_type": "Rest", "description": "Rest day"}}
+            {{"day_of_week": "Monday", "workout_type": "Rest", "description": "Rest day"}}, // Based on preferred days
+            {{"day_of_week": "Tuesday", "workout_type": "Easy Run", "description": "3 miles conversational", "distance": "3 miles", "intensity": "Easy"}},
+            {{"day_of_week": "Wednesday", "workout_type": "Rest", "description": "Rest or 30min Cross-Training"}},
+            {{"day_of_week": "Thursday", "workout_type": "Easy Run", "description": "4 miles easy", "distance": "4 miles"}},
+            {{"day_of_week": "Friday", "workout_type": "Rest", "description": "Rest day"}},
+            {{"day_of_week": "Saturday", "workout_type": "Long Run", "description": "6 miles easy pace", "distance": "6 miles"}}, // Based on preferred day
+            {{"day_of_week": "Sunday", "workout_type": "Easy Run", "description": "3 miles easy", "distance": "3 miles"}}
           ]
         }},
         // ... more weeks ...
-        // Week {weeks_until} Example (Taper)
-        {{
-           "week_number": {weeks_until},
-           "weekly_focus": "Taper - Race Week Prep",
-           "estimated_weekly_mileage": "8-12 miles",
-           "days": [
-                {{"day_of_week": "Monday", "workout_type": "Rest", "description": "Rest day"}},
-                {{"day_of_week": "Tuesday", "workout_type": "Easy Run", "description": "2 miles very easy shakeout", "distance": "2 miles", "intensity": "Very Easy"}},
-                // ... etc for taper week ...
-                {{"day_of_week": "Sunday", "workout_type": "Other", "description": "RACE DAY!"}} // Or maybe Race is outside the plan scope? Clarify if race day itself is part of the last week's days. Let's assume plan ends *before* race day. -> Plan ends Sunday before race.
-           ]
-        }}
       ],
-      "overall_notes": ["Hydrate well throughout the plan.", "Listen to your body.", "Fuel appropriately for your runs."]
+      "overall_notes": ["Hydrate well.", "Listen to your body.", "Adjusted peak mileage slightly based on race distance."]
     }}
     ```
 
@@ -243,7 +267,7 @@ async def generate_training_plan(
     """
 
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash-preview-04-17')
         response = await model.generate_content_async(prompt)
         raw_text = response.text
 
@@ -260,6 +284,52 @@ async def generate_training_plan(
 
         # Parse the JSON string into a Python dict (basic structure from AI)
         ai_parsed_data = json.loads(json_text)
+
+        # --- Pre-processing: Ensure day_of_week is correct before sorting/validation ---
+        day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        allowed_workout_types = {'Easy Run', 'Tempo Run', 'Intervals', 'Speed Work', 'Long Run', 'Rest', 'Cross-Training', 'Strength', 'Race Pace', 'Warm-up', 'Cool-down', 'Other'}
+        try:
+            for week_data in ai_parsed_data.get("weeks", []):
+                days_list = week_data.get("days", [])
+                if len(days_list) != 7:
+                    print(f"Warning: AI returned {len(days_list)} days for week {week_data.get('week_number', '?')}, expected 7. Skipping week correction.")
+                    continue # Skip correction if day count is wrong
+                for index, day_object in enumerate(days_list):
+                    week_num_str = f"week {week_data.get('week_number', '?')}"
+                    day_index_str = f"day index {index}"
+                    
+                    # 1. Correct day_of_week
+                    current_day_name = day_object.get("day_of_week")
+                    correct_day_name = day_order[index] # Expected name based on index (0=Monday, etc.)
+                    if not current_day_name or current_day_name not in day_order:
+                        print(f"Warning: Correcting invalid day_of_week '{current_day_name}' to '{correct_day_name}' for {week_num_str} {day_index_str}")
+                        day_object["day_of_week"] = correct_day_name
+                    
+                    # 2. Correct workout_type (if missing or invalid)
+                    current_workout_type = day_object.get("workout_type")
+                    if not current_workout_type or current_workout_type not in allowed_workout_types:
+                         corrected_type = 'Other' # Default correction
+                         print(f"Warning: Correcting invalid workout_type '{current_workout_type}' to '{corrected_type}' for {week_num_str} {day_index_str}")
+                         day_object["workout_type"] = corrected_type
+                         current_workout_type = corrected_type # Use corrected type for description check
+                    
+                    # 3. Add default description if missing
+                    current_description = day_object.get("description")
+                    if not current_description:
+                         # Provide a sensible default based on the (potentially corrected) workout type
+                         default_desc = current_workout_type if current_workout_type != 'Other' else 'Workout' 
+                         print(f"Warning: Adding default description '{default_desc}' for missing description for {week_num_str} {day_index_str}")
+                         day_object["description"] = default_desc
+
+        except IndexError as e:
+            # This might happen if AI returns > 7 days somehow
+            print(f"Error during day_of_week correction preprocessing: {e}. Index likely out of bounds.")
+            # Depending on severity, could raise HTTPException here, but let Pydantic catch it later for now
+            pass
+        except Exception as e:
+            print(f"Unexpected error during day_of_week correction: {e}")
+            pass # Let Pydantic validation handle deeper structure issues
+        # --- End Pre-processing ---
 
         # --- Construct the Full DetailedTrainingPlan Object ---
         detailed_weeks_data = []
@@ -296,8 +366,6 @@ async def generate_training_plan(
             if len(ai_days) != 7:
                  raise HTTPException(status_code=500, detail=f"AI returned {len(ai_days)} days for week {actual_week_number}, expected 7.")
 
-            # Define expected order for safety, although AI should return ordered
-            day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
             # Simple sort based on expected order (handles potential AI reordering)
             ai_days_sorted = sorted(ai_days, key=lambda d: day_order.index(d.get("day_of_week", "")))
 
@@ -338,18 +406,31 @@ async def generate_training_plan(
             "race_name": ai_parsed_data.get("race_name", race.name), # Use AI or fallback
             "race_distance": ai_parsed_data.get("race_distance", race.distance or "Unknown"),
             "race_date": race.date, # Use original fetched date string
-            "goal_time": None, # AI currently doesn't set this
+            "goal_time": user_goal_time_str,
             "plan_start_date": plan_start_date_str,
             "total_weeks": weeks_until, # Use calculated value
             "weeks": detailed_weeks_data,
             "overall_notes": ai_parsed_data.get("overall_notes"),
-            "personalization_details": {"pr_used": f"{race.distance} PR: {user_pr_str}"} if user_pr_str != "Not available" and user_pr_str != "Error fetching" else None,
+            # --- Populate personalization_details with actual inputs used --- 
+            "personalization_details": {
+                 "pr_used": f"{race.distance} PR: {user_pr_str}" if user_pr_str not in ["Not available", "Error fetching"] else None,
+                 "goal_time_set": request_data.goal_time if request_data.goal_time else None,
+                 "current_mileage_input": request_data.current_weekly_mileage if request_data.current_weekly_mileage else None,
+                 "peak_mileage_input": request_data.peak_weekly_mileage if request_data.peak_weekly_mileage else None,
+                 "running_days_input": request_data.preferred_running_days if request_data.preferred_running_days else None,
+                 "long_run_day_input": request_data.preferred_long_run_day if request_data.preferred_long_run_day else None,
+             },
             # plan_id, generated_at, plan_version will be set by Pydantic model defaults
         }
 
+        # Filter out None values from personalization_details before validation
+        plan_data["personalization_details"] = {k: v for k, v in plan_data["personalization_details"].items() if v is not None}
+        if not plan_data["personalization_details"]:
+             plan_data["personalization_details"] = None # Set to None if empty
+
         # Validate the final constructed dict against the Pydantic model
         detailed_plan = DetailedTrainingPlan.parse_obj(plan_data)
-        print(f"Successfully generated and validated detailed plan for {detailed_plan.race_name}")
+        print(f"Successfully generated and validated detailed plan for {detailed_plan.race_name} with goal {detailed_plan.goal_time}") # <-- Log goal time
         return detailed_plan
 
     except json.JSONDecodeError as e:
