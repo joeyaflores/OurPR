@@ -940,7 +940,7 @@ function PlanPageContent() {
                         {/* Goal Time */}
                         <div className="grid grid-cols-3 items-center gap-4">
                             <Label htmlFor="goal-time" className="text-right">
-                                Goal Time
+                                Goal Time (Optional)
                             </Label>
                             <Input
                                 id="goal-time"
@@ -969,7 +969,7 @@ function PlanPageContent() {
                         {/* Peak Mileage */}
                         <div className="grid grid-cols-3 items-center gap-4">
                             <Label htmlFor="peak-mileage" className="text-right">
-                                Target Peak Miles/Week
+                                Target Peak Miles/Week (Optional)
                             </Label>
                             <Input
                                 id="peak-mileage"
@@ -984,7 +984,7 @@ function PlanPageContent() {
                          {/* Running Days/Week */}
                          <div className="grid grid-cols-3 items-center gap-4">
                             <Label htmlFor="running-days" className="text-right">
-                                Running Days/Week
+                                Running Days/Week (Optional)
                             </Label>
                             <Select value={runningDaysInput} onValueChange={setRunningDaysInput}> 
                                 <SelectTrigger id="running-days" className="col-span-2">
@@ -1002,7 +1002,7 @@ function PlanPageContent() {
                          {/* Preferred Long Run Day */}
                          <div className="grid grid-cols-3 items-center gap-4">
                             <Label htmlFor="long-run-day" className="text-right">
-                                Long Run Day
+                                Long Run Day (Optional)
                             </Label>
                             <Select value={longRunDayInput} onValueChange={setLongRunDayInput}> 
                                 <SelectTrigger id="long-run-day" className="col-span-2">
