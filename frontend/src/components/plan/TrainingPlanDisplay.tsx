@@ -38,6 +38,7 @@ import {
     CalendarMinus,
     CalendarPlus,
     Pencil,        // <-- Add Pencil Icon
+    MessageSquareQuote, // <-- Add Analyze Icon
 } from "lucide-react";
 import { 
     parseISO, 
@@ -61,6 +62,13 @@ import { WorkoutDetailModal } from './WorkoutDetailModal';
 import { EditWorkoutModal } from './EditWorkoutModal';
 import Confetti from 'react-confetti';
 import { AddNoteModal } from './AddNoteModal';
+import { motion } from 'framer-motion';
+import { SelectValue } from "@/components/ui/select";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
 
 // API Base URL (Consider moving to config)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -142,6 +150,11 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
     // --- State for Add Note Modal ---
     const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
     const [dayDateForNote, setDayDateForNote] = useState<string | null>(null);
+    // --- State for Analysis ---
+    const [isAnalyzingWorkout, setIsAnalyzingWorkout] = useState<string | null>(null); // Store date string of workout being analyzed
+    const [analysisFeedback, setAnalysisFeedback] = useState<Record<string, string>>({}); // Store feedback keyed by date
+    const [feedbackPopoverOpen, setFeedbackPopoverOpen] = useState<string | null>(null); // Store date string of open popover
+    const [analysisError, setAnalysisError] = useState<Record<string, string | null>>({}); // <-- State for analysis errors
     // -------------------------------------------
 
     // Update local state if the initial plan prop changes
@@ -300,6 +313,24 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                       setIsAddNoteModalOpen(true); // Open the note modal
                   }
                   // --------------------------------------------------
+
+                  // --- Trigger Weekly Summary if Sunday is completed --- 
+                  const completedWorkout = updatedPlanOptimistic.weeks
+                      .flatMap((w: DetailedWeek) => w.days)
+                      .find((d: DailyWorkout) => d.date === dayDate);
+                  
+                  if (newStatus === 'completed' && completedWorkout?.day_of_week === 'Sunday') {
+                      const completedWeekNumber = updatedPlanOptimistic.weeks.find((w: DetailedWeek) => w.days.some((d: DailyWorkout) => d.date === dayDate))?.week_number;
+                      if (completedWeekNumber) {
+                          // Find the actual week data to pass to the toast function
+                          const weekData = updatedPlanOptimistic.weeks.find((w: DetailedWeek) => w.week_number === completedWeekNumber);
+                          if (weekData) {
+                             showWeeklySummaryToast(weekData); // Call summary function
+                          }
+                      }
+                  }
+                  // -----------------------------------------------------
+
                   break;
               }
           }
@@ -334,10 +365,10 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
           const updatedDay: DailyWorkout = await response.json(); 
           
           // Optional: Call the onPlanUpdate callback if provided, passing the *optimistically* updated plan
-          // This allows the parent component to know the state has changed.
-          if (onPlanUpdate && dayUpdatedOptimistic) {
-              onPlanUpdate(updatedPlanOptimistic);
-          }
+          // This is now handled within saveUpdatedPlanToBackend to ensure it reflects the final saved state
+          // if (onPlanUpdate && dayUpdatedOptimistic) {
+          //     onPlanUpdate(updatedPlanOptimistic); 
+          // }
 
       } catch (e: any) {
           console.error("Failed to update workout status:", e);
@@ -350,6 +381,40 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
       } finally {
           setUpdatingDayDate(null); // Clear loading state regardless of outcome
       }
+  };
+
+  // --- Function to calculate weekly summary stats ---
+  const calculateWeeklySummaryStats = (week: DetailedWeek) => {
+    let plannedCount = 0;
+    let completedCount = 0;
+
+    week.days.forEach(day => {
+      if (day.workout_type !== 'Rest') {
+        plannedCount++;
+        if (day.status === 'completed') {
+          completedCount++;
+        }
+      }
+    });
+
+    const consistency = plannedCount > 0 ? Math.round((completedCount / plannedCount) * 100) : null;
+    return { plannedCount, completedCount, consistency };
+  };
+
+  // --- Function to display the weekly summary toast ---
+  const showWeeklySummaryToast = (week: DetailedWeek) => {
+    const stats = calculateWeeklySummaryStats(week);
+    const title = `🎉 Week ${week.week_number} Complete!`;
+    let description = `You completed ${stats.completedCount} out of ${stats.plannedCount} planned workouts.`;
+    if (stats.consistency !== null) {
+      description += ` (${stats.consistency}% consistency)`;
+    }
+    // Add more stats here if needed in the future
+
+    toast.success(title, { 
+        description: description, 
+        duration: 5000 // Longer duration for reading
+    });
   };
 
   // --- Function to handle opening the detail modal --- 
@@ -674,6 +739,85 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
   };
   // -----------------------------------------------------------
 
+  // --- Function to handle workout analysis request ---
+  const handleAnalyzeWorkout = async (workout: DailyWorkout, weekNumber: number) => {
+    console.log(`Analyzing workout for date: ${workout.date}`);
+    setIsAnalyzingWorkout(workout.date); // Start loading state for this workout
+    // Clear previous feedback for this date in case of retry
+    setAnalysisFeedback(prev => { 
+        const newState = {...prev};
+        delete newState[workout.date];
+        return newState;
+    });
+    // Clear previous error for this date
+    setAnalysisError(prev => ({ ...prev, [workout.date]: null }));
+    setFeedbackPopoverOpen(workout.date); // Open the popover immediately to show loading
+
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    const accessToken = session?.access_token;
+
+    if (!accessToken) {
+        toast.error("Authentication required for analysis.");
+        setIsAnalyzingWorkout(null);
+        setFeedbackPopoverOpen(null);
+        return;
+    }
+
+    // Prepare context
+    const planContext = {
+        race_name: plan.race_name,
+        race_distance: plan.race_distance,
+        goal_time: plan.goal_time || null,
+        plan_total_weeks: plan.total_weeks,
+        week_number: weekNumber,
+        pr_used: plan.personalization_details?.pr_used || null,
+    };
+
+    const requestBody = {
+        race_id: raceId,
+        workout: workout,
+        plan_context: planContext
+    }
+
+    const url = `${API_BASE_URL}/api/users/me/plan/analyze-workout`;
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            let errorDetail = `Analysis error: ${response.status}`;
+            try {
+                const errorData = await response.json();
+                errorDetail = errorData.detail || errorDetail;
+            } catch { /* Ignore */ }
+            throw new Error(errorDetail);
+        }
+
+        const result: { feedback: string } = await response.json();
+        // Store feedback
+        setAnalysisFeedback(prev => ({ ...prev, [workout.date]: result.feedback }));
+        // Popover is already open
+
+    } catch (e: any) {
+        console.error("Failed to analyze workout:", e);
+        // Store the error message
+        const errorMessage = e.message || "An unknown error occurred during analysis.";
+        setAnalysisError(prev => ({ ...prev, [workout.date]: errorMessage })); 
+        // Keep popover open to show error
+    } finally {
+        setIsAnalyzingWorkout(null); // Stop loading state
+    }
+  };
+  // ---------------------------------------------------
+
   return (
     <TooltipProvider delayDuration={150}>
         {/* Render Confetti conditionally based on state */} 
@@ -775,7 +919,7 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                {overallAdherence !== null && (
                     <div className="flex items-center text-sm text-muted-foreground pt-1">
                         <CheckCheck className="h-4 w-4 mr-2 flex-shrink-0 text-green-600" />
-                        <span>Consistency: <strong>{overallAdherence}%</strong></span>
+;                        <span>Consistency: <strong>{overallAdherence}%</strong></span>
                     </div>
                )}
                {/* ----------------------- */}
@@ -821,21 +965,27 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                     const isPastWeek = weekStatus === 'past';
                     const isCurrentWeek = weekStatus === 'current';
 
+                    // --- Check if all non-Rest workouts are completed --- 
+                    const nonRestWorkouts = week.days.filter(d => d.workout_type !== 'Rest');
+                    const isWeekFullyCompleted = nonRestWorkouts.length > 0 && nonRestWorkouts.every(d => d.status === 'completed');
+                    // ----------------------------------------------------
+
                     return (
                         <AccordionItem 
                             key={week.week_number} 
                             value={`week-${week.week_number}`} 
                             className={cn(
-                                "border rounded-md transition-all duration-300",
-                                isPastWeek && "bg-muted/50 border-muted/60",
-                                isCurrentWeek && "border-primary border-2 shadow-md bg-primary/5",
-                                !isCurrentWeek && !isPastWeek && "border bg-card" // Future week default
+                                "border rounded-md transition-all duration-300", // Base classes
+                                isWeekFullyCompleted && "bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-700", // Persistent highlight
+                                isPastWeek && !isWeekFullyCompleted && "bg-muted/50 border-muted/60", // Don't apply if completed
+                                isCurrentWeek && !isWeekFullyCompleted && "border-primary border-2 shadow-md bg-primary/5", // Don't apply if completed
+                                !isCurrentWeek && !isPastWeek && !isWeekFullyCompleted && "border bg-card" // Future week default 
                             )}
                         >
                             <AccordionTrigger 
                                 className={cn(
-                                    "px-4 py-3 text-base font-medium hover:no-underline", // Adjusted font weight
-                                    isPastWeek && "text-muted-foreground",
+                                    "px-4 py-3 text-base font-medium hover:no-underline", 
+                                    isPastWeek && !isWeekFullyCompleted && "text-muted-foreground", // Mute if past but not fully done
                                 )}
                             >
                                 <div className="flex justify-between items-center w-full">
@@ -845,6 +995,30 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                             {format(parseISO(week.start_date), 'MMM d')} - {format(parseISO(week.end_date), 'MMM d, yyyy')}
                                         </span>
                                    </div>
+                                   {/* Temporary Completion Badge - Will be replaced by persistent logic below */} 
+                                   {/* {highlightedWeek === week.week_number && ( 
+                                       <motion.div 
+                                           initial={{ opacity: 0, scale: 0.5 }} 
+                                           animate={{ opacity: 1, scale: 1 }} 
+                                           exit={{ opacity: 0, scale: 0.5 }} 
+                                           transition={{ duration: 0.3 }} 
+                                       > 
+                                            
+                                           <Badge variant="default" className={cn(
+                                               "ml-2 text-xs",
+                                               "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300 border-green-300 dark:border-green-700"
+                                               )}>Week Complete!</Badge> 
+                                       </motion.div> 
+                                   )} */}
+                                   {/* Persistent Completion Badge */} 
+                                   {isWeekFullyCompleted && ( 
+                                       <Badge variant="default" className={cn( 
+                                           "ml-2 text-xs", 
+                                           "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300 border-green-300 dark:border-green-700" 
+                                       )}> 
+                                           🏆 Complete! 
+                                       </Badge> 
+                                   )} 
                                    <div className="flex items-center space-x-2">
                                        {week.estimated_weekly_mileage && (
                                             <Badge variant="outline" className="text-xs font-normal mr-2 hidden sm:inline-flex">
@@ -956,11 +1130,67 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                                             )}
                                                         </>
                                                     )}
+                                                    {/* --- Analyze Button (Moved Here) --- */}
+                                                    {day.status === 'completed' && day.workout_type !== 'Rest' && (
+                                                        <Popover
+                                                            open={feedbackPopoverOpen === day.date}
+                                                            onOpenChange={(isOpen) => setFeedbackPopoverOpen(isOpen ? day.date : null)}
+                                                        >
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <PopoverTrigger asChild>
+                                                                        {/* Using a simple button element for styling */}
+                                                                        <button
+                                                                            className="mt-1 h-6 w-6 flex items-center justify-center rounded-full text-muted-foreground hover:text-blue-600 disabled:opacity-40" // Added mt-1, ensured centering
+                                                                            onClick={(e) => { e.stopPropagation(); handleAnalyzeWorkout(day, week.week_number); }}
+                                                                            disabled={isAnalyzingWorkout === day.date}
+                                                                            aria-label="Analyze workout"
+                                                                        >
+                                                                            {isAnalyzingWorkout === day.date ? (
+                                                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                                            ) : (
+                                                                                <MessageSquareQuote className="h-4 w-4" />
+                                                                            )}
+                                                                        </button>
+                                                                    </PopoverTrigger>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent side="left"> {/* Adjusted side */}
+                                                                    <p>Analyze Workout</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                            {/* Popover content positioning */}
+                                                            <PopoverContent side="right" align="start" className="w-64 p-3">
+                                                                <h4 className="font-medium text-sm mb-1.5">Workout Analysis</h4>
+                                                                {isAnalyzingWorkout === day.date && !analysisFeedback[day.date] && (
+                                                                    <p className="text-xs text-muted-foreground italic">Analyzing...</p>
+                                                                )}
+                                                                {analysisFeedback[day.date] && (
+                                                                    <p className="text-xs">{analysisFeedback[day.date]}</p>
+                                                                )}
+                                                                {analysisError[day.date] && (
+                                                                    <div className="mt-2 space-y-1">
+                                                                        <p className="text-xs text-destructive">Error: {analysisError[day.date]}</p>
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            className="h-7 px-2 text-xs"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleAnalyzeWorkout(day, week.week_number);
+                                                                            }}
+                                                                        >
+                                                                            Retry
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+                                                            </PopoverContent>
+                                                        </Popover>
+                                                    )}
                                                 </div>
 
-                                                {/* Main Content Area (Icon, Day, Details) - Takes up remaining space */} 
-                                                <div 
-                                                    className="flex-grow flex items-start space-x-3 cursor-pointer" 
+                                                {/* Main Content Area (Icon, Day, Details) */}
+                                                <div
+                                                    className="flex-grow flex items-start space-x-3 cursor-pointer"
                                                     onClick={() => handleViewDetails(day)}
                                                 >
                                                     {/* Icon and Day of Week */}
@@ -988,48 +1218,48 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                                 </div>
 
                                                 {/* Shift Buttons Area (Aligned to the right) */} 
-                                                <div className="flex flex-col space-y-0.5 flex-shrink-0 ml-2 items-center"> {/* Vertical column for buttons + Edit */} 
-                                                                        {/* Shift Up Button */}
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="icon"
-                                                                            className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-40"
-                                                                            onClick={(e) => {e.stopPropagation(); handleShiftWorkout(weekIndex, dayIndex, 'up');}}
-                                                                            disabled={dayIndex === 0} // Only disable based on position
-                                                                            aria-label="Shift workout up"
-                                                                        >
-                                                                            <ChevronUp className="h-4 w-4" />
-                                                                        </Button>
-                                                                        {/* Shift Down Button */}
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="icon"
-                                                                            className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-40"
-                                                                            onClick={(e) => {e.stopPropagation(); handleShiftWorkout(weekIndex, dayIndex, 'down');}}
-                                                                            disabled={dayIndex === 6} // Only disable based on position
-                                                                            aria-label="Shift workout down"
-                                                                        >
-                                                                            <ChevronDown className="h-4 w-4" />
-                                                                        </Button>
-                                                                        {/* Add Edit Button */} 
-                                                                        <Tooltip> 
-                                                                            <TooltipTrigger asChild> 
-                                                                                <Button 
-                                                                                    variant="ghost" 
-                                                                                    size="icon" 
-                                                                                    className="h-6 w-6 text-muted-foreground hover:text-primary disabled:opacity-40" 
-                                                                                    onClick={(e) => { e.stopPropagation(); handleOpenEditModal(day); }} 
-                                                                                    disabled={isLoading} // Disable if status is updating 
-                                                                                    aria-label="Edit workout" 
-                                                                                > 
-                                                                                    <Pencil className="h-4 w-4" /> 
-                                                                                </Button> 
-                                                                            </TooltipTrigger> 
-                                                                            <TooltipContent side="top"> 
-                                                                                <p>Edit Workout</p> 
-                                                                            </TooltipContent> 
-                                                                        </Tooltip> 
-                                                                </div>
+                                                <div className="flex flex-col space-y-0.5 flex-shrink-0 ml-2 items-center"> {/* Vertical column (Reverted) */} 
+                                                                         {/* Shift Up Button */} 
+                                                                         <Button
+                                                                             variant="ghost"
+                                                                             size="icon"
+                                                                             className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-40"
+                                                                             onClick={(e) => {e.stopPropagation(); handleShiftWorkout(weekIndex, dayIndex, 'up');}}
+                                                                             disabled={dayIndex === 0} // Only disable based on position
+                                                                             aria-label="Shift workout up"
+                                                                         >
+                                                                             <ChevronUp className="h-4 w-4" />
+                                                                         </Button>
+                                                                         {/* Shift Down Button */}
+                                                                         <Button
+                                                                             variant="ghost"
+                                                                             size="icon"
+                                                                             className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-40"
+                                                                             onClick={(e) => {e.stopPropagation(); handleShiftWorkout(weekIndex, dayIndex, 'down');}}
+                                                                             disabled={dayIndex === 6} // Only disable based on position
+                                                                             aria-label="Shift workout down"
+                                                                         >
+                                                                             <ChevronDown className="h-4 w-4" />
+                                                                         </Button>
+                                                                         {/* Add Edit Button */} 
+                                                                         <Tooltip> 
+                                                                             <TooltipTrigger asChild> 
+                                                                                 <Button 
+                                                                                     variant="ghost" 
+                                                                                     size="icon" 
+                                                                                     className="h-6 w-6 text-muted-foreground hover:text-primary disabled:opacity-40" 
+                                                                                     onClick={(e) => { e.stopPropagation(); handleOpenEditModal(day); }} 
+                                                                                     disabled={isLoading} // Disable if status is updating 
+                                                                                     aria-label="Edit workout" 
+                                                                                 > 
+                                                                                     <Pencil className="h-4 w-4" /> 
+                                                                                 </Button> 
+                                                                             </TooltipTrigger> 
+                                                                             <TooltipContent side="top"> 
+                                                                                 <p>Edit Workout</p> 
+                                                                             </TooltipContent> 
+                                                                         </Tooltip> 
+                                                                 </div>
                                             </li>
                                         );
                                     })}
