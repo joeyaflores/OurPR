@@ -57,3 +57,24 @@ class DetailedTrainingPlan(BaseModel):
 
 class DailyWorkoutStatusUpdate(BaseModel):
     status: Literal['pending', 'completed', 'skipped'] 
+
+# --- Models for Workout Analysis --- 
+
+class PlanContextForAnalysis(BaseModel):
+    """Optional context about the overall plan for the AI."""
+    race_name: Optional[str] = None
+    race_distance: Optional[str] = None
+    goal_time: Optional[str] = None
+    plan_total_weeks: Optional[int] = None
+    week_number: Optional[int] = None # The week number this workout belongs to
+    pr_used: Optional[str] = None
+
+class WorkoutAnalysisRequest(BaseModel):
+    """Request body for the workout analysis endpoint."""
+    race_id: uuid.UUID # Although redundant with URL, good for validation
+    workout: DailyWorkout # The specific workout object, including user notes
+    plan_context: Optional[PlanContextForAnalysis] = None
+
+class WorkoutAnalysisResponse(BaseModel):
+    """Response body containing the AI feedback."""
+    feedback: str 

@@ -38,6 +38,7 @@ import {
     CalendarMinus,
     CalendarPlus,
     Pencil,        // <-- Add Pencil Icon
+    MessageSquareQuote, // <-- Add Analyze Icon
 } from "lucide-react";
 import { 
     parseISO, 
@@ -62,6 +63,12 @@ import { EditWorkoutModal } from './EditWorkoutModal';
 import Confetti from 'react-confetti';
 import { AddNoteModal } from './AddNoteModal';
 import { motion } from 'framer-motion';
+import { SelectValue } from "@/components/ui/select";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
 
 // API Base URL (Consider moving to config)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -143,6 +150,11 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
     // --- State for Add Note Modal ---
     const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
     const [dayDateForNote, setDayDateForNote] = useState<string | null>(null);
+    // --- State for Analysis ---
+    const [isAnalyzingWorkout, setIsAnalyzingWorkout] = useState<string | null>(null); // Store date string of workout being analyzed
+    const [analysisFeedback, setAnalysisFeedback] = useState<Record<string, string>>({}); // Store feedback keyed by date
+    const [feedbackPopoverOpen, setFeedbackPopoverOpen] = useState<string | null>(null); // Store date string of open popover
+    const [analysisError, setAnalysisError] = useState<Record<string, string | null>>({}); // <-- State for analysis errors
     // -------------------------------------------
 
     // Update local state if the initial plan prop changes
@@ -727,6 +739,85 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
   };
   // -----------------------------------------------------------
 
+  // --- Function to handle workout analysis request ---
+  const handleAnalyzeWorkout = async (workout: DailyWorkout, weekNumber: number) => {
+    console.log(`Analyzing workout for date: ${workout.date}`);
+    setIsAnalyzingWorkout(workout.date); // Start loading state for this workout
+    // Clear previous feedback for this date in case of retry
+    setAnalysisFeedback(prev => { 
+        const newState = {...prev};
+        delete newState[workout.date];
+        return newState;
+    });
+    // Clear previous error for this date
+    setAnalysisError(prev => ({ ...prev, [workout.date]: null }));
+    setFeedbackPopoverOpen(workout.date); // Open the popover immediately to show loading
+
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    const accessToken = session?.access_token;
+
+    if (!accessToken) {
+        toast.error("Authentication required for analysis.");
+        setIsAnalyzingWorkout(null);
+        setFeedbackPopoverOpen(null);
+        return;
+    }
+
+    // Prepare context
+    const planContext = {
+        race_name: plan.race_name,
+        race_distance: plan.race_distance,
+        goal_time: plan.goal_time || null,
+        plan_total_weeks: plan.total_weeks,
+        week_number: weekNumber,
+        pr_used: plan.personalization_details?.pr_used || null,
+    };
+
+    const requestBody = {
+        race_id: raceId,
+        workout: workout,
+        plan_context: planContext
+    }
+
+    const url = `${API_BASE_URL}/api/users/me/plan/analyze-workout`;
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            let errorDetail = `Analysis error: ${response.status}`;
+            try {
+                const errorData = await response.json();
+                errorDetail = errorData.detail || errorDetail;
+            } catch { /* Ignore */ }
+            throw new Error(errorDetail);
+        }
+
+        const result: { feedback: string } = await response.json();
+        // Store feedback
+        setAnalysisFeedback(prev => ({ ...prev, [workout.date]: result.feedback }));
+        // Popover is already open
+
+    } catch (e: any) {
+        console.error("Failed to analyze workout:", e);
+        // Store the error message
+        const errorMessage = e.message || "An unknown error occurred during analysis.";
+        setAnalysisError(prev => ({ ...prev, [workout.date]: errorMessage })); 
+        // Keep popover open to show error
+    } finally {
+        setIsAnalyzingWorkout(null); // Stop loading state
+    }
+  };
+  // ---------------------------------------------------
+
   return (
     <TooltipProvider delayDuration={150}>
         {/* Render Confetti conditionally based on state */} 
@@ -1039,11 +1130,67 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                                             )}
                                                         </>
                                                     )}
+                                                    {/* --- Analyze Button (Moved Here) --- */}
+                                                    {day.status === 'completed' && day.workout_type !== 'Rest' && (
+                                                        <Popover
+                                                            open={feedbackPopoverOpen === day.date}
+                                                            onOpenChange={(isOpen) => setFeedbackPopoverOpen(isOpen ? day.date : null)}
+                                                        >
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <PopoverTrigger asChild>
+                                                                        {/* Using a simple button element for styling */}
+                                                                        <button
+                                                                            className="mt-1 h-6 w-6 flex items-center justify-center rounded-full text-muted-foreground hover:text-blue-600 disabled:opacity-40" // Added mt-1, ensured centering
+                                                                            onClick={(e) => { e.stopPropagation(); handleAnalyzeWorkout(day, week.week_number); }}
+                                                                            disabled={isAnalyzingWorkout === day.date}
+                                                                            aria-label="Analyze workout"
+                                                                        >
+                                                                            {isAnalyzingWorkout === day.date ? (
+                                                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                                            ) : (
+                                                                                <MessageSquareQuote className="h-4 w-4" />
+                                                                            )}
+                                                                        </button>
+                                                                    </PopoverTrigger>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent side="left"> {/* Adjusted side */}
+                                                                    <p>Analyze Workout</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                            {/* Popover content positioning */}
+                                                            <PopoverContent side="right" align="start" className="w-64 p-3">
+                                                                <h4 className="font-medium text-sm mb-1.5">Workout Analysis</h4>
+                                                                {isAnalyzingWorkout === day.date && !analysisFeedback[day.date] && (
+                                                                    <p className="text-xs text-muted-foreground italic">Analyzing...</p>
+                                                                )}
+                                                                {analysisFeedback[day.date] && (
+                                                                    <p className="text-xs">{analysisFeedback[day.date]}</p>
+                                                                )}
+                                                                {analysisError[day.date] && (
+                                                                    <div className="mt-2 space-y-1">
+                                                                        <p className="text-xs text-destructive">Error: {analysisError[day.date]}</p>
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            className="h-7 px-2 text-xs"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleAnalyzeWorkout(day, week.week_number);
+                                                                            }}
+                                                                        >
+                                                                            Retry
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+                                                            </PopoverContent>
+                                                        </Popover>
+                                                    )}
                                                 </div>
 
-                                                {/* Main Content Area (Icon, Day, Details) - Takes up remaining space */} 
-                                                <div 
-                                                    className="flex-grow flex items-start space-x-3 cursor-pointer" 
+                                                {/* Main Content Area (Icon, Day, Details) */}
+                                                <div
+                                                    className="flex-grow flex items-start space-x-3 cursor-pointer"
                                                     onClick={() => handleViewDetails(day)}
                                                 >
                                                     {/* Icon and Day of Week */}
@@ -1071,48 +1218,48 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                                 </div>
 
                                                 {/* Shift Buttons Area (Aligned to the right) */} 
-                                                <div className="flex flex-col space-y-0.5 flex-shrink-0 ml-2 items-center"> {/* Vertical column for buttons + Edit */} 
-                                                                        {/* Shift Up Button */}
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="icon"
-                                                                            className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-40"
-                                                                            onClick={(e) => {e.stopPropagation(); handleShiftWorkout(weekIndex, dayIndex, 'up');}}
-                                                                            disabled={dayIndex === 0} // Only disable based on position
-                                                                            aria-label="Shift workout up"
-                                                                        >
-                                                                            <ChevronUp className="h-4 w-4" />
-                                                                        </Button>
-                                                                        {/* Shift Down Button */}
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="icon"
-                                                                            className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-40"
-                                                                            onClick={(e) => {e.stopPropagation(); handleShiftWorkout(weekIndex, dayIndex, 'down');}}
-                                                                            disabled={dayIndex === 6} // Only disable based on position
-                                                                            aria-label="Shift workout down"
-                                                                        >
-                                                                            <ChevronDown className="h-4 w-4" />
-                                                                        </Button>
-                                                                        {/* Add Edit Button */} 
-                                                                        <Tooltip> 
-                                                                            <TooltipTrigger asChild> 
-                                                                                <Button 
-                                                                                    variant="ghost" 
-                                                                                    size="icon" 
-                                                                                    className="h-6 w-6 text-muted-foreground hover:text-primary disabled:opacity-40" 
-                                                                                    onClick={(e) => { e.stopPropagation(); handleOpenEditModal(day); }} 
-                                                                                    disabled={isLoading} // Disable if status is updating 
-                                                                                    aria-label="Edit workout" 
-                                                                                > 
-                                                                                    <Pencil className="h-4 w-4" /> 
-                                                                                </Button> 
-                                                                            </TooltipTrigger> 
-                                                                            <TooltipContent side="top"> 
-                                                                                <p>Edit Workout</p> 
-                                                                            </TooltipContent> 
-                                                                        </Tooltip> 
-                                                                </div>
+                                                <div className="flex flex-col space-y-0.5 flex-shrink-0 ml-2 items-center"> {/* Vertical column (Reverted) */} 
+                                                                         {/* Shift Up Button */} 
+                                                                         <Button
+                                                                             variant="ghost"
+                                                                             size="icon"
+                                                                             className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-40"
+                                                                             onClick={(e) => {e.stopPropagation(); handleShiftWorkout(weekIndex, dayIndex, 'up');}}
+                                                                             disabled={dayIndex === 0} // Only disable based on position
+                                                                             aria-label="Shift workout up"
+                                                                         >
+                                                                             <ChevronUp className="h-4 w-4" />
+                                                                         </Button>
+                                                                         {/* Shift Down Button */}
+                                                                         <Button
+                                                                             variant="ghost"
+                                                                             size="icon"
+                                                                             className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-40"
+                                                                             onClick={(e) => {e.stopPropagation(); handleShiftWorkout(weekIndex, dayIndex, 'down');}}
+                                                                             disabled={dayIndex === 6} // Only disable based on position
+                                                                             aria-label="Shift workout down"
+                                                                         >
+                                                                             <ChevronDown className="h-4 w-4" />
+                                                                         </Button>
+                                                                         {/* Add Edit Button */} 
+                                                                         <Tooltip> 
+                                                                             <TooltipTrigger asChild> 
+                                                                                 <Button 
+                                                                                     variant="ghost" 
+                                                                                     size="icon" 
+                                                                                     className="h-6 w-6 text-muted-foreground hover:text-primary disabled:opacity-40" 
+                                                                                     onClick={(e) => { e.stopPropagation(); handleOpenEditModal(day); }} 
+                                                                                     disabled={isLoading} // Disable if status is updating 
+                                                                                     aria-label="Edit workout" 
+                                                                                 > 
+                                                                                     <Pencil className="h-4 w-4" /> 
+                                                                                 </Button> 
+                                                                             </TooltipTrigger> 
+                                                                             <TooltipContent side="top"> 
+                                                                                 <p>Edit Workout</p> 
+                                                                             </TooltipContent> 
+                                                                         </Tooltip> 
+                                                                 </div>
                                             </li>
                                         );
                                     })}

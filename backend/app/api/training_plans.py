@@ -15,7 +15,8 @@ from ..services.supabase_client import get_supabase_client
 from ..models.training_plan import (
     TrainingPlanOutline, WeeklySummary,
     DetailedTrainingPlan, DetailedWeek, DailyWorkout,
-    DailyWorkoutStatusUpdate
+    DailyWorkoutStatusUpdate,
+    WorkoutAnalysisRequest, WorkoutAnalysisResponse, PlanContextForAnalysis # <-- Import new models
 )
 from ..models.race import Race # Import race model
 from ..models.user_pr import UserPr # Import PR model
@@ -797,3 +798,121 @@ async def delete_saved_plan(
     except Exception as e:
         print(f"Error deleting saved plan for user {user_id}, race {race_id}: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while deleting the plan.") 
+
+# --- Endpoint for AI Workout Analysis --- 
+
+@router.post(
+    "/plan/analyze-workout", 
+    response_model=WorkoutAnalysisResponse,
+    summary="Get AI feedback on a completed workout"
+)
+async def analyze_completed_workout(
+    request: WorkoutAnalysisRequest,
+    supabase: Client = Depends(get_supabase_client), # Keep unused for now, might need later
+    current_user: SupabaseUser = Depends(get_current_user)
+):
+    """Provides AI-driven feedback on a single completed workout, considering user notes and plan context."""
+    user_id = str(current_user.id)
+    workout = request.workout
+    context = request.plan_context
+
+    # Basic check: Ensure the workout is actually completed
+    if workout.status != 'completed':
+        raise HTTPException(status_code=400, detail="Workout must be marked as completed to be analyzed.")
+
+    # --- Build Prompt Step-by-Step --- 
+    context_lines = []
+    if context:
+        context_lines.append(f"Training Plan Context:")
+        if context.race_name: context_lines.append(f"- Race: {context.race_name} ({context.race_distance or 'N/A'})")
+        if context.goal_time: context_lines.append(f"- Goal Time: {context.goal_time}")
+        if context.pr_used:   context_lines.append(f"- Relevant PR: {context.pr_used}")
+        if context.week_number and context.plan_total_weeks: 
+            context_lines.append(f"- Current Week: {context.week_number} of {context.plan_total_weeks}")
+    context_str = "\n".join(context_lines)
+
+    # --- Build Prompt Step-by-Step --- 
+    prompt_parts = [
+        "Analyze the following completed running workout based on the provided context.",
+        "\n",
+        context_str,
+        "\n",
+        "Completed Workout Details:",
+        f"- Date: {workout.date} ({workout.day_of_week})",
+        f"- Type: {workout.workout_type}",
+        f"- Planned Description: {workout.description}",
+        f"- Planned Distance: {workout.distance or 'N/A'}",
+        f"- Planned Duration: {workout.duration or 'N/A'}",
+        f"- Planned Intensity: {workout.intensity or 'N/A'}",
+        "\n",
+    ]
+
+    # Conditionally add user notes section
+    if workout.notes:
+        prompt_parts.append("User's Notes on Completion:")
+        prompt_parts.append('""' + "\n".join(workout.notes) + '""' ) # Add quotes around notes
+    else:
+        prompt_parts.append("User did not provide any notes for this workout.")
+
+    # Add Instructions
+    prompt_parts.extend([
+        "\n",
+        "Instructions:",
+        "- Analyze the workout completion based on the available information.",
+        "- **Your goal is to provide feedback on the user's subjective experience (from their notes, if provided) relative to the *planned* workout's purpose and intensity.**",
+        "- **Do NOT expect or ask for quantitative data about the *actual* performance (like exact distance, pace, time, HR). Base your feedback *only* on the provided planned details and the user's notes.**",
+        "- **If no user notes were provided, give brief (2-sentence) encouragement related to completing the planned workout.**",
+        "- Provide exactly 2-3 sentences of concise, insightful, and encouraging feedback based *only* on the information provided.",
+        "- Focus on whether the user's experience aligned with the workout's purpose and if the notes indicate anything positive or concerning for that specific workout.",
+        "- Frame the feedback constructively. Avoid generic statements. Tailor it to the specifics.",
+        "- **Do NOT ask follow-up questions.**",
+        "- **Do NOT suggest next steps or future plan adjustments.**",
+        "- **Your entire response MUST be ONLY the 2-3 sentences of feedback text. Nothing before or after.**",
+        "\n",
+        "Feedback:"
+    ])
+
+    prompt = "\n".join(prompt_parts)
+    # --------------------------------
+
+    # --- Call AI Model --- 
+    if not gemini_api_key:
+        raise HTTPException(status_code=503, detail="AI analysis service is not configured.")
+
+    try:
+        # Consider using a different model or settings if needed for analysis tasks
+        model = genai.GenerativeModel('gemini-1.5-pro') 
+        
+        # --- Add Generation Config for Brevity --- 
+        generation_config = genai.types.GenerationConfig(
+            max_output_tokens=200, # Increased token limit
+            temperature=0.4      # Lower temperature for less creativity
+        )
+        # -----------------------------------------
+ 
+        # Log the prompt being sent
+        print(f"--- Sending Analysis Prompt to AI ---\n{prompt}\n-------------------------------------")
+
+        response = await model.generate_content_async(
+            prompt,
+            generation_config=generation_config # Pass the config
+        )
+        
+        # Basic response validation - check for empty or blocked response
+        if not response.text:
+            print(f"Warning: AI returned empty feedback for user {user_id}, workout date {workout.date}")
+            # Consider potential safety flags if available in response object
+            if hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
+                print(f"Safety Block Reason: {response.prompt_feedback.block_reason}")
+                raise HTTPException(status_code=400, detail=f"Analysis request blocked due to safety filters ({response.prompt_feedback.block_reason}). Please revise notes or contact support.")
+            raise HTTPException(status_code=500, detail="AI analysis failed to generate feedback.")
+
+        feedback_text = response.text.strip()
+        return WorkoutAnalysisResponse(feedback=feedback_text)
+
+    except Exception as e:
+        print(f"Error during AI workout analysis for user {user_id}, workout date {workout.date}: {e}")
+        # Don't expose internal error details usually
+        raise HTTPException(status_code=500, detail="Failed to get analysis from AI service.")
+
+# --- END Endpoint for AI Workout Analysis --- 
