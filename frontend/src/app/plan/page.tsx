@@ -1018,7 +1018,6 @@ function PlanPageContent() {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsGenerationModalOpen(false)}>Cancel</Button>
-                        {/* Button now calls the unified handleGeneratePlan */}
                         <Button onClick={handleGeneratePlan}>Generate Plan</Button>
                     </DialogFooter>
                 </DialogContent>
@@ -1072,7 +1071,7 @@ function PlanPageContent() {
                                     {isOldPlanFormatError ? "Outdated Plan Format" : 
                                     isServerErrorOnView ? "Error Loading Plan" : 
                                     planGenerationError?.includes("No saved plan found") ? "Plan Not Found" : // Specific view error
-                                    planGenerationError ? "Generation Failed" : "Error"} // General generation error
+                                    planGenerationError ? "Generation Failed" : "Error"}
                                 </p>
                                 <p className="text-sm">{planGenerationError || "An unexpected error occurred."}</p>
                                 {/* Show Delete/Regenerate button for old format OR server error (VIEWING errors) */} 
