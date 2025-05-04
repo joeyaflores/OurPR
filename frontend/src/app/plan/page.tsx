@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
 import { RaceCard } from '@/components/onboarding/RaceCard'; // Assuming RaceCard is here or adjust path
@@ -46,6 +46,16 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input"; // <-- Import Input
+import { Label } from "@/components/ui/label"; // <-- Import Label
+import { DialogFooter } from "@/components/ui/dialog";
+import { 
+    Select, 
+    SelectContent, 
+    SelectItem, 
+    SelectTrigger, 
+    SelectValue 
+} from "@/components/ui/select"; // <-- Import Select components
 
 // Add API Base URL (consider moving to a config file or env var)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -105,7 +115,16 @@ function PlanPageContent() {
     const [loadingMessageIndex, setLoadingMessageIndex] = useState(0); // State for animated message
     // --- State for Google Connection ---
     const [isGoogleConnected, setIsGoogleConnected] = useState(false); // Assume not connected initially
-    // ------------------------------------
+    // --- Enhanced Generation Modal State ---
+    const [isGenerationModalOpen, setIsGenerationModalOpen] = useState(false);
+    const [goalTimeInput, setGoalTimeInput] = useState<string>("");
+    const [currentMileageInput, setCurrentMileageInput] = useState<string>("");
+    const [peakMileageInput, setPeakMileageInput] = useState<string>("");
+    const [runningDaysInput, setRunningDaysInput] = useState<string>(""); // Use string for Select value
+    const [longRunDayInput, setLongRunDayInput] = useState<string>(""); // Use string for Select value
+    const [raceIdForGeneration, setRaceIdForGeneration] = useState<string | number | null>(null);
+    const goalTimeInputRef = useRef<HTMLInputElement>(null); // Ref for focusing first input
+    // -------------------------------------
     // --- Get search params ---
     const searchParams = useSearchParams();
     // --------------------------
@@ -250,14 +269,64 @@ function PlanPageContent() {
         };
     }, [isPlanGenerating]); // Dependency: run when generation state changes
 
-    // --- Function to handle plan generation request --- 
-    const handleGeneratePlanRequest = async (raceId: string | number) => {
-        // console.log(`Requesting plan generation for race ID: ${raceId}`);
+    // --- Function to OPEN the Enhanced Generation Modal --- 
+    const openGenerationModal = (raceId: string | number) => {
+        // console.log(`Opening generation modal for race ID: ${raceId}`);
+        setRaceIdForGeneration(raceId); // Store the race ID we'll generate for
+        // Reset all input fields
+        setGoalTimeInput(""); 
+        setCurrentMileageInput("");
+        setPeakMileageInput("");
+        setRunningDaysInput(""); // Reset select
+        setLongRunDayInput(""); // Reset select
+        setIsGenerationModalOpen(true); // Open the modal
+        // Reset other plan generation states just in case
+        setPlanGenerationError(null);
+        setCurrentPlanOutline(null);
+        setPlanWasJustGenerated(false);
+        setIsPlanGenerating(false);
+        setIsViewingPlan(false);
+        // Focus the goal time input shortly after the modal opens
+        setTimeout(() => goalTimeInputRef.current?.focus(), 100); 
+    };
+
+    // --- Function to handle the actual plan generation request (CALLED BY ENHANCED MODAL) ---
+    const handleGeneratePlan = async () => {
+        const raceId = raceIdForGeneration; // Get the stored race ID
+        // console.log(`Requesting plan generation for race ID: ${raceId} with inputs:`, 
+        //    { goalTimeInput, currentMileageInput, peakMileageInput, runningDaysInput, longRunDayInput });
+
+        if (!raceId) {
+            console.error("Generation Modal Error: Race ID is missing.");
+            toast.error("An error occurred. Could not determine the race.");
+            setIsGenerationModalOpen(false); // Close generation modal
+            return;
+        }
+
+        // Close the generation input modal first
+        setIsGenerationModalOpen(false);
+
+        // Prepare data for the API request body
+        const requestBody: Record<string, any> = {};
+        if (goalTimeInput.trim()) requestBody.goal_time = goalTimeInput.trim();
+        if (currentMileageInput.trim()) requestBody.current_weekly_mileage = parseInt(currentMileageInput, 10);
+        if (peakMileageInput.trim()) requestBody.peak_weekly_mileage = parseInt(peakMileageInput, 10);
+        if (runningDaysInput) requestBody.preferred_running_days = parseInt(runningDaysInput, 10);
+        if (longRunDayInput) requestBody.preferred_long_run_day = longRunDayInput;
+
+        // Validate numeric inputs (simple check)
+        if (isNaN(requestBody.current_weekly_mileage)) delete requestBody.current_weekly_mileage;
+        if (isNaN(requestBody.peak_weekly_mileage)) delete requestBody.peak_weekly_mileage;
+        if (isNaN(requestBody.preferred_running_days)) delete requestBody.preferred_running_days;
+
+        // console.log("Prepared request body:", requestBody);
+
+        // Now proceed with the original generation logic
         setIsPlanGenerating(true);
         setPlanGenerationError(null);
         setCurrentPlanOutline(null);
-        setSelectedRaceIdForPlan(raceId); // Track which card is loading
-        setIsPlanModalOpen(true); // Open modal immediately to show loading
+        setSelectedRaceIdForPlan(raceId); // Track which card shows loading (in main plan list)
+        setIsPlanModalOpen(true); // Open the *main* plan display modal to show loading/results
         setPlanWasJustGenerated(false); // Reset flag
         setIsViewingPlan(false); // Ensure view state is off
 
@@ -268,6 +337,7 @@ function PlanPageContent() {
             setPlanGenerationError("Authentication error: Cannot generate plan.");
             setIsPlanGenerating(false);
             setSelectedRaceIdForPlan(null);
+            setIsPlanModalOpen(false); // Close main modal too on auth error
             return;
         }
 
@@ -276,7 +346,11 @@ function PlanPageContent() {
         try {
             const response = await fetch(url, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${accessToken}` },
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json' // <-- Add Content-Type
+                 },
+                body: JSON.stringify(requestBody) // <-- Send enhanced body
             });
 
             if (!response.ok) {
@@ -285,6 +359,15 @@ function PlanPageContent() {
                     const errorData = await response.json();
                     errorDetail = errorData.detail || errorDetail;
                 } catch { /* Ignore if error body is not JSON */ }
+                 // Handle specific 400 from backend (e.g., too long duration)
+                if (response.status === 400 && errorDetail.includes("Training plans cannot be generated")) {
+                     toast.error("Plan Duration Too Long", { description: errorDetail });
+                     // Keep main modal closed if duration error happens before generation starts
+                     setIsPlanModalOpen(false);
+                } else if (response.status === 400 && errorDetail.includes("Race date is in the past")) {
+                    toast.error("Cannot Generate Plan", { description: errorDetail });
+                    setIsPlanModalOpen(false);
+                }
                 throw new Error(errorDetail);
             }
 
@@ -295,8 +378,12 @@ function PlanPageContent() {
 
         } catch (e: any) {
             console.error("Failed to generate training plan:", e);
-            setPlanGenerationError(e.message || "An unexpected error occurred during plan generation.");
+            // Only set the generation error if it wasn't one of the specific toasts above
+            if (!(e.message.includes("Training plans cannot be generated") || e.message.includes("Race date is in the past"))) {
+                 setPlanGenerationError(e.message || "An unexpected error occurred during plan generation.");
+            }
             setCurrentPlanOutline(null); // Ensure no stale plan shown on error
+            // Don't automatically close the main modal here, let the error display show
         } finally {
             setIsPlanGenerating(false);
              // Don't reset selectedRaceIdForPlan here, RaceCard uses it to stop its spinner
@@ -828,7 +915,7 @@ function PlanPageContent() {
                             currentWeekNumber={raceWithDetails.currentWeekNumber} // <-- Pass current week
                             totalPlanWeeks={raceWithDetails.totalPlanWeeks} // <-- Pass total weeks
                             isPrOfficial={raceWithDetails.isPrOfficial} // <-- Pass PR status
-                            onGeneratePlanRequest={handleGeneratePlanRequest}
+                            onGeneratePlanRequest={openGenerationModal} // <-- Pass the function to open the ENHANCED modal
                             onViewPlanRequest={handleViewPlanRequest}
                             onDeletePlanRequest={handleDeletePlanRequest} // <-- Pass delete handler
                             isGeneratingPlan={selectedRaceIdForPlan === raceWithDetails.id && isPlanGenerating}
@@ -839,7 +926,106 @@ function PlanPageContent() {
                 </div>
             )}
 
-            {/* Plan Generation/View Modal */}
+            {/* -- UPDATED: Enhanced Generation Modal -- */}
+            <Dialog open={isGenerationModalOpen} onOpenChange={setIsGenerationModalOpen}>
+                <DialogContent className="sm:max-w-lg"> {/* Increased width slightly */} 
+                    <DialogHeader>
+                        <DialogTitle>Customize Your Training Plan</DialogTitle>
+                        <DialogDescription>
+                            Provide optional details to tailor the plan to your current fitness and preferences.
+                            Leave fields blank if unsure.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        {/* Goal Time */}
+                        <div className="grid grid-cols-3 items-center gap-4">
+                            <Label htmlFor="goal-time" className="text-right">
+                                Goal Time
+                            </Label>
+                            <Input
+                                id="goal-time"
+                                ref={goalTimeInputRef} // Ref for initial focus
+                                value={goalTimeInput}
+                                onChange={(e) => setGoalTimeInput(e.target.value)}
+                                placeholder="HH:MM:SS or MM:SS" 
+                                className="col-span-2"
+                            />
+                        </div>
+                        {/* Current Mileage */}
+                        <div className="grid grid-cols-3 items-center gap-4">
+                            <Label htmlFor="current-mileage" className="text-right">
+                                Current Miles/Week
+                            </Label>
+                            <Input
+                                id="current-mileage"
+                                type="number"
+                                value={currentMileageInput}
+                                onChange={(e) => setCurrentMileageInput(e.target.value)}
+                                placeholder="e.g., 15" 
+                                className="col-span-2"
+                                min="0"
+                            />
+                        </div>
+                        {/* Peak Mileage */}
+                        <div className="grid grid-cols-3 items-center gap-4">
+                            <Label htmlFor="peak-mileage" className="text-right">
+                                Target Peak Miles/Week
+                            </Label>
+                            <Input
+                                id="peak-mileage"
+                                type="number"
+                                value={peakMileageInput}
+                                onChange={(e) => setPeakMileageInput(e.target.value)}
+                                placeholder="e.g., 40" 
+                                className="col-span-2"
+                                min="0"
+                            />
+                        </div>
+                         {/* Running Days/Week */}
+                         <div className="grid grid-cols-3 items-center gap-4">
+                            <Label htmlFor="running-days" className="text-right">
+                                Running Days/Week
+                            </Label>
+                            <Select value={runningDaysInput} onValueChange={setRunningDaysInput}> 
+                                <SelectTrigger id="running-days" className="col-span-2">
+                                    <SelectValue placeholder="Select days..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="3">3 days</SelectItem>
+                                    <SelectItem value="4">4 days</SelectItem>
+                                    <SelectItem value="5">5 days</SelectItem>
+                                    <SelectItem value="6">6 days</SelectItem>
+                                    {/* <SelectItem value="7">7 days</SelectItem> */}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                         {/* Preferred Long Run Day */}
+                         <div className="grid grid-cols-3 items-center gap-4">
+                            <Label htmlFor="long-run-day" className="text-right">
+                                Long Run Day
+                            </Label>
+                            <Select value={longRunDayInput} onValueChange={setLongRunDayInput}> 
+                                <SelectTrigger id="long-run-day" className="col-span-2">
+                                    <SelectValue placeholder="Select day..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Saturday">Saturday</SelectItem>
+                                    <SelectItem value="Sunday">Sunday</SelectItem>
+                                    {/* <SelectItem value="Flexible">Flexible</SelectItem> */}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsGenerationModalOpen(false)}>Cancel</Button>
+                        {/* Button now calls the unified handleGeneratePlan */}
+                        <Button onClick={handleGeneratePlan}>Generate Plan</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            {/* -- End Enhanced Generation Modal -- */}
+
+            {/* Plan Generation/View Modal (Main Display Modal) */}
             <Dialog open={isPlanModalOpen} onOpenChange={setIsPlanModalOpen}>
                 <DialogContent className="max-w-3xl">
                     <DialogHeader>
@@ -901,7 +1087,7 @@ function PlanPageContent() {
                                             // For simplicity now, just trigger generation after delete attempt
                                             setIsOldPlanFormatError(false); // Clear old format error
                                             setIsServerErrorOnView(false); // Clear server error state as well
-                                            handleGeneratePlanRequest(selectedRaceIdForPlan); // Trigger generation
+                                            openGenerationModal(selectedRaceIdForPlan); // Trigger generation modal
                                         }}
                                     >
                                         <Trash2 className="mr-2 h-4 w-4" /> Delete and Regenerate Plan
@@ -914,8 +1100,8 @@ function PlanPageContent() {
                                         className="mt-2 h-auto p-0 text-destructive" 
                                         onClick={() => {
                                             if(selectedRaceIdForPlan) {
-                                                setIsPlanModalOpen(false); // Close modal first
-                                                handleGeneratePlanRequest(selectedRaceIdForPlan); // Trigger generation
+                                                setIsPlanModalOpen(false); // Close display modal first
+                                                openGenerationModal(selectedRaceIdForPlan); // Trigger generation modal
                                             }
                                         }}
                                     >

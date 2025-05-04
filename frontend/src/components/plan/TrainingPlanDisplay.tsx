@@ -560,6 +560,13 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                       )}
                   </div>
               )}
+              {/* --- Goal Time --- */}
+              {plan.goal_time && (
+                  <div className="flex items-center text-sm text-primary font-medium">
+                      <Target className="h-4 w-4 mr-2 flex-shrink-0" />
+                      <span>Goal: {plan.goal_time}</span>
+                  </div>
+              )}
               {/* --- Google Calendar Buttons --- */}
               {/* Logic moved slightly: Button shown conditionally based on sync status, 
                    enabled/disabled based on connection status */}
@@ -630,18 +637,34 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                )}
                {/* ----------------------- */}
                {/* --- Personalization Info --- */}
-               {/* Use plan.personalization_details if available */}
-               {plan.personalization_details?.pr_used && (
-                 <p className="text-xs flex items-center text-muted-foreground">
-                   <Sparkles className="h-4 w-4 mr-1.5 text-primary flex-shrink-0" />
-                   <span>
-                     Personalized using {plan.personalization_details.pr_used}
-                   </span>
-                 </p>
+               {plan.personalization_details && Object.keys(plan.personalization_details).length > 0 && ( 
+                 <div className="pt-2 text-xs text-muted-foreground space-y-0.5"> 
+                     <p className="flex items-center font-medium"> 
+                         <Sparkles className="h-4 w-4 mr-1.5 text-primary flex-shrink-0" /> 
+                         <span>Plan Personalized With:</span> 
+                     </p> 
+                     <ul className="list-disc list-outside pl-6"> 
+                         {plan.personalization_details.pr_used && ( 
+                             <li>PR Used: {plan.personalization_details.pr_used}</li> 
+                         )} 
+                         {plan.personalization_details.goal_time_set && ( 
+                             <li>Goal Time Input: {plan.personalization_details.goal_time_set}</li> 
+                         )} 
+                         {plan.personalization_details.current_mileage_input && ( 
+                             <li>Current Mileage Input: {plan.personalization_details.current_mileage_input} miles/week</li> 
+                         )} 
+                         {plan.personalization_details.peak_mileage_input && ( 
+                             <li>Peak Mileage Input: {plan.personalization_details.peak_mileage_input} miles/week</li> 
+                         )} 
+                         {plan.personalization_details.running_days_input && ( 
+                             <li>Running Days Input: {plan.personalization_details.running_days_input} days/week</li> 
+                         )} 
+                         {plan.personalization_details.long_run_day_input && ( 
+                             <li>Long Run Day Input: {plan.personalization_details.long_run_day_input}</li> 
+                         )} 
+                     </ul> 
+                 </div> 
                )}
-               {/* Display provided userPrString as fallback/override if needed? */}
-               {/* For now, prioritize plan.personalization_details */}
-               {/* {userPrString && !plan.personalization_details?.pr_used && ( ... )} */}
 
           </div>
           {/* --- End Header --- */}

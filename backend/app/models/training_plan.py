@@ -44,7 +44,7 @@ class DetailedTrainingPlan(BaseModel):
     race_name: str
     race_distance: str
     race_date: str # "YYYY-MM-DD"
-    goal_time: Optional[str] = None
+    goal_time: Optional[str] = None # <-- ADDED: User's desired finish time (e.g., "1:45:00")
     plan_start_date: str # "YYYY-MM-DD" - First Monday of the plan
     total_weeks: int
     weeks: List[DetailedWeek]

@@ -45,7 +45,7 @@ export interface DetailedTrainingPlan {
   race_name: string;
   race_distance: string;
   race_date: string; // "YYYY-MM-DD"
-  goal_time?: string; // Optional user goal
+  goal_time?: string | null; // Optional user goal (e.g., "1:45:00")
   plan_start_date: string; // "YYYY-MM-DD" - First Monday of the plan
   total_weeks: number;
   weeks: DetailedWeek[]; // The core daily schedule
@@ -53,6 +53,11 @@ export interface DetailedTrainingPlan {
   personalization_details?: {
       pr_used?: string; // e.g., "5K PR: 25:30"
       adjustments_made?: string[]; // e.g., ["Reduced initial long run based on recent activity"]
+      goal_time_set?: string | null;
+      current_mileage_input?: number | null;
+      peak_mileage_input?: number | null;
+      running_days_input?: number | null;
+      long_run_day_input?: string | null;
   };
   generated_at: string; // ISO timestamp
   plan_version: string; // e.g., "v2.0-daily"
