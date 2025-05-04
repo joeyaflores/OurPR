@@ -37,6 +37,7 @@ import {
     ChevronDown,   // <-- Add Down Arrow
     CalendarMinus,
     CalendarPlus,
+    Pencil,        // <-- Add Pencil Icon
 } from "lucide-react";
 import { 
     parseISO, 
@@ -57,6 +58,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { workoutTypeMap, getWorkoutIcon } from './planUtils';
 import { WorkoutDetailModal } from './WorkoutDetailModal';
+import { EditWorkoutModal } from './EditWorkoutModal';
 
 // API Base URL (Consider moving to config)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -130,6 +132,9 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
     // --- State for Calendar Sync/Remove Loading ---
     const [isSyncing, setIsSyncing] = useState(false);
     const [isRemoving, setIsRemoving] = useState(false);
+    // --- State for Editing Workout ---
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [workoutToEdit, setWorkoutToEdit] = useState<DailyWorkout | null>(null);
     // -------------------------------------------
 
     // Update local state if the initial plan prop changes
@@ -539,6 +544,97 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
   };
   // ---------------------------------------------------------------
 
+  // --- Workout Editing Handlers (Placeholders for now) ---
+  const handleOpenEditModal = (workout: DailyWorkout) => {
+    console.log("Opening edit modal for:", workout);
+    setWorkoutToEdit(workout);
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateWorkout = (updatedWorkout: DailyWorkout) => {
+    console.log("Workout updated in modal (handler called):", updatedWorkout);
+    // Find the week and day index
+    let weekIndex = -1;
+    let dayIndex = -1;
+    const originalPlanForRollback = JSON.parse(JSON.stringify(plan)); // Deep copy for rollback
+
+    for (let i = 0; i < plan.weeks.length; i++) {
+        const foundDayIndex = plan.weeks[i].days.findIndex(d => d.date === updatedWorkout.date);
+        if (foundDayIndex !== -1) {
+            weekIndex = i;
+            dayIndex = foundDayIndex;
+            break;
+        }
+    }
+
+    if (weekIndex === -1 || dayIndex === -1) {
+        console.error("Could not find workout to update in local state.");
+        toast.error("Update Error", { description: "Could not locate the workout to update." });
+        setIsEditModalOpen(false); // Close modal even if error
+        return;
+    }
+
+    // Create a new plan object with the updated workout (Optimistic Update)
+    const updatedPlanOptimistic = JSON.parse(JSON.stringify(plan)); // Deep copy to modify
+    updatedPlanOptimistic.weeks[weekIndex].days[dayIndex] = updatedWorkout;
+    setPlan(updatedPlanOptimistic);
+
+    setIsEditModalOpen(false); // Close the modal
+
+    // Call the function to save to backend
+    saveUpdatedPlanToBackend(updatedPlanOptimistic, originalPlanForRollback);
+  };
+
+  const saveUpdatedPlanToBackend = async (updatedPlan: DetailedTrainingPlan, originalPlan: DetailedTrainingPlan) => {
+    console.log("Attempting to save updated plan to backend:", updatedPlan);
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    const accessToken = session?.access_token;
+
+    if (!accessToken) {
+        toast.error("Authentication error. Cannot save plan changes.");
+        setPlan(originalPlan); // Rollback optimistic update
+        return; 
+    }
+
+    const saveUrl = `${API_BASE_URL}/api/users/me/races/${raceId}/generated-plan`;
+    try {
+        const response = await fetch(saveUrl, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(updatedPlan), // Send the whole updated plan
+        });
+
+        if (!response.ok) {
+            let errorDetail = `API error: ${response.status}`;
+            try {
+                const errorData = await response.json();
+                errorDetail = errorData.detail || errorDetail;
+            } catch { /* Ignore */ }
+            throw new Error(errorDetail);
+        }
+
+        // Success!
+        toast.success("Workout updated successfully!");
+        // The state is already updated optimistically.
+        // Optionally update state with response if backend modifies it:
+        // const savedPlan = await response.json();
+        // setPlan(savedPlan);
+        if(onPlanUpdate) onPlanUpdate(updatedPlan); // Notify parent of successful update 
+
+    } catch (error: any) {
+        console.error("Failed to save plan structure update after edit:", error);
+        toast.error("Failed to save changes", { description: error.message });
+        // Rollback optimistic update on save failure
+        setPlan(originalPlan); 
+        if(onPlanUpdate) onPlanUpdate(originalPlan); // Notify parent of rollback
+    }    
+  };
+  // ------------------------------------------------------
+
   return (
     <TooltipProvider delayDuration={150}>
         <div className="space-y-4">
@@ -845,7 +941,7 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                                 </div>
 
                                                 {/* Shift Buttons Area (Aligned to the right) */} 
-                                                <div className="flex flex-col space-y-0.5 flex-shrink-0 ml-2"> {/* Vertical column for buttons */} 
+                                                <div className="flex flex-col space-y-0.5 flex-shrink-0 ml-2 items-center"> {/* Vertical column for buttons + Edit */} 
                                                                         {/* Shift Up Button */}
                                                                         <Button
                                                                             variant="ghost"
@@ -868,6 +964,24 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                                                         >
                                                                             <ChevronDown className="h-4 w-4" />
                                                                         </Button>
+                                                                        {/* Add Edit Button */} 
+                                                                        <Tooltip> 
+                                                                            <TooltipTrigger asChild> 
+                                                                                <Button 
+                                                                                    variant="ghost" 
+                                                                                    size="icon" 
+                                                                                    className="h-6 w-6 text-muted-foreground hover:text-primary disabled:opacity-40" 
+                                                                                    onClick={(e) => { e.stopPropagation(); handleOpenEditModal(day); }} 
+                                                                                    disabled={isLoading} // Disable if status is updating 
+                                                                                    aria-label="Edit workout" 
+                                                                                > 
+                                                                                    <Pencil className="h-4 w-4" /> 
+                                                                                </Button> 
+                                                                            </TooltipTrigger> 
+                                                                            <TooltipContent side="top"> 
+                                                                                <p>Edit Workout</p> 
+                                                                            </TooltipContent> 
+                                                                        </Tooltip> 
                                                                 </div>
                                             </li>
                                         );
@@ -900,6 +1014,14 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
               onOpenChange={setIsDetailModalOpen} 
               workout={selectedWorkout} 
           />
+
+          {/* Render the Edit Modal */} 
+          <EditWorkoutModal 
+              isOpen={isEditModalOpen} 
+              onOpenChange={setIsEditModalOpen} 
+              workout={workoutToEdit} 
+              onSave={handleUpdateWorkout} 
+          /> 
         </div>
     </TooltipProvider>
   );
