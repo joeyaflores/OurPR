@@ -61,6 +61,7 @@ import { WorkoutDetailModal } from './WorkoutDetailModal';
 import { EditWorkoutModal } from './EditWorkoutModal';
 import Confetti from 'react-confetti';
 import { AddNoteModal } from './AddNoteModal';
+import { motion } from 'framer-motion';
 
 // API Base URL (Consider moving to config)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -300,6 +301,24 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                       setIsAddNoteModalOpen(true); // Open the note modal
                   }
                   // --------------------------------------------------
+
+                  // --- Trigger Weekly Summary if Sunday is completed --- 
+                  const completedWorkout = updatedPlanOptimistic.weeks
+                      .flatMap((w: DetailedWeek) => w.days)
+                      .find((d: DailyWorkout) => d.date === dayDate);
+                  
+                  if (newStatus === 'completed' && completedWorkout?.day_of_week === 'Sunday') {
+                      const completedWeekNumber = updatedPlanOptimistic.weeks.find((w: DetailedWeek) => w.days.some((d: DailyWorkout) => d.date === dayDate))?.week_number;
+                      if (completedWeekNumber) {
+                          // Find the actual week data to pass to the toast function
+                          const weekData = updatedPlanOptimistic.weeks.find((w: DetailedWeek) => w.week_number === completedWeekNumber);
+                          if (weekData) {
+                             showWeeklySummaryToast(weekData); // Call summary function
+                          }
+                      }
+                  }
+                  // -----------------------------------------------------
+
                   break;
               }
           }
@@ -334,10 +353,10 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
           const updatedDay: DailyWorkout = await response.json(); 
           
           // Optional: Call the onPlanUpdate callback if provided, passing the *optimistically* updated plan
-          // This allows the parent component to know the state has changed.
-          if (onPlanUpdate && dayUpdatedOptimistic) {
-              onPlanUpdate(updatedPlanOptimistic);
-          }
+          // This is now handled within saveUpdatedPlanToBackend to ensure it reflects the final saved state
+          // if (onPlanUpdate && dayUpdatedOptimistic) {
+          //     onPlanUpdate(updatedPlanOptimistic); 
+          // }
 
       } catch (e: any) {
           console.error("Failed to update workout status:", e);
@@ -350,6 +369,40 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
       } finally {
           setUpdatingDayDate(null); // Clear loading state regardless of outcome
       }
+  };
+
+  // --- Function to calculate weekly summary stats ---
+  const calculateWeeklySummaryStats = (week: DetailedWeek) => {
+    let plannedCount = 0;
+    let completedCount = 0;
+
+    week.days.forEach(day => {
+      if (day.workout_type !== 'Rest') {
+        plannedCount++;
+        if (day.status === 'completed') {
+          completedCount++;
+        }
+      }
+    });
+
+    const consistency = plannedCount > 0 ? Math.round((completedCount / plannedCount) * 100) : null;
+    return { plannedCount, completedCount, consistency };
+  };
+
+  // --- Function to display the weekly summary toast ---
+  const showWeeklySummaryToast = (week: DetailedWeek) => {
+    const stats = calculateWeeklySummaryStats(week);
+    const title = `🎉 Week ${week.week_number} Complete!`;
+    let description = `You completed ${stats.completedCount} out of ${stats.plannedCount} planned workouts.`;
+    if (stats.consistency !== null) {
+      description += ` (${stats.consistency}% consistency)`;
+    }
+    // Add more stats here if needed in the future
+
+    toast.success(title, { 
+        description: description, 
+        duration: 5000 // Longer duration for reading
+    });
   };
 
   // --- Function to handle opening the detail modal --- 
@@ -775,7 +828,7 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                {overallAdherence !== null && (
                     <div className="flex items-center text-sm text-muted-foreground pt-1">
                         <CheckCheck className="h-4 w-4 mr-2 flex-shrink-0 text-green-600" />
-                        <span>Consistency: <strong>{overallAdherence}%</strong></span>
+;                        <span>Consistency: <strong>{overallAdherence}%</strong></span>
                     </div>
                )}
                {/* ----------------------- */}
@@ -821,21 +874,27 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                     const isPastWeek = weekStatus === 'past';
                     const isCurrentWeek = weekStatus === 'current';
 
+                    // --- Check if all non-Rest workouts are completed --- 
+                    const nonRestWorkouts = week.days.filter(d => d.workout_type !== 'Rest');
+                    const isWeekFullyCompleted = nonRestWorkouts.length > 0 && nonRestWorkouts.every(d => d.status === 'completed');
+                    // ----------------------------------------------------
+
                     return (
                         <AccordionItem 
                             key={week.week_number} 
                             value={`week-${week.week_number}`} 
                             className={cn(
-                                "border rounded-md transition-all duration-300",
-                                isPastWeek && "bg-muted/50 border-muted/60",
-                                isCurrentWeek && "border-primary border-2 shadow-md bg-primary/5",
-                                !isCurrentWeek && !isPastWeek && "border bg-card" // Future week default
+                                "border rounded-md transition-all duration-300", // Base classes
+                                isWeekFullyCompleted && "bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-700", // Persistent highlight
+                                isPastWeek && !isWeekFullyCompleted && "bg-muted/50 border-muted/60", // Don't apply if completed
+                                isCurrentWeek && !isWeekFullyCompleted && "border-primary border-2 shadow-md bg-primary/5", // Don't apply if completed
+                                !isCurrentWeek && !isPastWeek && !isWeekFullyCompleted && "border bg-card" // Future week default 
                             )}
                         >
                             <AccordionTrigger 
                                 className={cn(
-                                    "px-4 py-3 text-base font-medium hover:no-underline", // Adjusted font weight
-                                    isPastWeek && "text-muted-foreground",
+                                    "px-4 py-3 text-base font-medium hover:no-underline", 
+                                    isPastWeek && !isWeekFullyCompleted && "text-muted-foreground", // Mute if past but not fully done
                                 )}
                             >
                                 <div className="flex justify-between items-center w-full">
@@ -845,6 +904,30 @@ export function TrainingPlanDisplay({ plan: initialPlan, raceId, onPlanUpdate, u
                                             {format(parseISO(week.start_date), 'MMM d')} - {format(parseISO(week.end_date), 'MMM d, yyyy')}
                                         </span>
                                    </div>
+                                   {/* Temporary Completion Badge - Will be replaced by persistent logic below */} 
+                                   {/* {highlightedWeek === week.week_number && ( 
+                                       <motion.div 
+                                           initial={{ opacity: 0, scale: 0.5 }} 
+                                           animate={{ opacity: 1, scale: 1 }} 
+                                           exit={{ opacity: 0, scale: 0.5 }} 
+                                           transition={{ duration: 0.3 }} 
+                                       > 
+                                            
+                                           <Badge variant="default" className={cn(
+                                               "ml-2 text-xs",
+                                               "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300 border-green-300 dark:border-green-700"
+                                               )}>Week Complete!</Badge> 
+                                       </motion.div> 
+                                   )} */}
+                                   {/* Persistent Completion Badge */} 
+                                   {isWeekFullyCompleted && ( 
+                                       <Badge variant="default" className={cn( 
+                                           "ml-2 text-xs", 
+                                           "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300 border-green-300 dark:border-green-700" 
+                                       )}> 
+                                           🏆 Complete! 
+                                       </Badge> 
+                                   )} 
                                    <div className="flex items-center space-x-2">
                                        {week.estimated_weekly_mileage && (
                                             <Badge variant="outline" className="text-xs font-normal mr-2 hidden sm:inline-flex">
