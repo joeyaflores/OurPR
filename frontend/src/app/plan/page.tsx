@@ -940,7 +940,7 @@ function PlanPageContent() {
                         {/* Goal Time */}
                         <div className="grid grid-cols-3 items-center gap-4">
                             <Label htmlFor="goal-time" className="text-right">
-                                Goal Time
+                                Goal Time (Optional)
                             </Label>
                             <Input
                                 id="goal-time"
@@ -969,7 +969,7 @@ function PlanPageContent() {
                         {/* Peak Mileage */}
                         <div className="grid grid-cols-3 items-center gap-4">
                             <Label htmlFor="peak-mileage" className="text-right">
-                                Target Peak Miles/Week
+                                Target Peak Miles/Week (Optional)
                             </Label>
                             <Input
                                 id="peak-mileage"
@@ -984,7 +984,7 @@ function PlanPageContent() {
                          {/* Running Days/Week */}
                          <div className="grid grid-cols-3 items-center gap-4">
                             <Label htmlFor="running-days" className="text-right">
-                                Running Days/Week
+                                Running Days/Week (Optional)
                             </Label>
                             <Select value={runningDaysInput} onValueChange={setRunningDaysInput}> 
                                 <SelectTrigger id="running-days" className="col-span-2">
@@ -1002,7 +1002,7 @@ function PlanPageContent() {
                          {/* Preferred Long Run Day */}
                          <div className="grid grid-cols-3 items-center gap-4">
                             <Label htmlFor="long-run-day" className="text-right">
-                                Long Run Day
+                                Long Run Day (Optional)
                             </Label>
                             <Select value={longRunDayInput} onValueChange={setLongRunDayInput}> 
                                 <SelectTrigger id="long-run-day" className="col-span-2">
@@ -1071,43 +1071,56 @@ function PlanPageContent() {
                                 <p className="font-medium">
                                     {isOldPlanFormatError ? "Outdated Plan Format" : 
                                     isServerErrorOnView ? "Error Loading Plan" : 
-                                    planGenerationError?.includes("No saved plan found") ? "Plan Not Found" : planGenerationError ? "Request Failed" : "Error"}
+                                    planGenerationError?.includes("No saved plan found") ? "Plan Not Found" : // Specific view error
+                                    planGenerationError ? "Generation Failed" : "Error"} // General generation error
                                 </p>
                                 <p className="text-sm">{planGenerationError || "An unexpected error occurred."}</p>
-                                {/* Show Delete/Regenerate button for old format OR server error */}
+                                {/* Show Delete/Regenerate button for old format OR server error (VIEWING errors) */} 
                                 {(isOldPlanFormatError || isServerErrorOnView) && selectedRaceIdForPlan && (
                                     <Button
                                         variant="destructive"
                                         size="sm"
                                         className="mt-3"
                                         onClick={async () => {
-                                            // Optionally add loading state here
-                                            await handleDeletePlanRequest(selectedRaceIdForPlan); // Wait for delete
-                                            // Check if deletion was successful before regenerating?
-                                            // For simplicity now, just trigger generation after delete attempt
-                                            setIsOldPlanFormatError(false); // Clear old format error
-                                            setIsServerErrorOnView(false); // Clear server error state as well
-                                            openGenerationModal(selectedRaceIdForPlan); // Trigger generation modal
+                                            await handleDeletePlanRequest(selectedRaceIdForPlan);
+                                            setIsOldPlanFormatError(false);
+                                            setIsServerErrorOnView(false);
+                                            openGenerationModal(selectedRaceIdForPlan);
                                         }}
                                     >
                                         <Trash2 className="mr-2 h-4 w-4" /> Delete and Regenerate Plan
                                     </Button>
                                 )}
-                                {/* Original button for 404 error */}
+                                {/* Link to generate if 404 on VIEW */} 
                                 {planGenerationError?.includes("No saved plan found") && !isOldPlanFormatError && !isServerErrorOnView && (
                                     <Button 
                                         variant="link" 
                                         className="mt-2 h-auto p-0 text-destructive" 
                                         onClick={() => {
                                             if(selectedRaceIdForPlan) {
-                                                setIsPlanModalOpen(false); // Close display modal first
-                                                openGenerationModal(selectedRaceIdForPlan); // Trigger generation modal
+                                                setIsPlanModalOpen(false);
+                                                openGenerationModal(selectedRaceIdForPlan);
                                             }
                                         }}
                                     >
                                         Generate a new plan?
                                     </Button>
                                 )}
+                                {/* --- NEW: Button to try GENERATION again --- */} 
+                                {planGenerationError && !planGenerationError.includes("No saved plan found") && !isOldPlanFormatError && !isServerErrorOnView && selectedRaceIdForPlan && (
+                                     <Button
+                                         variant="outline"
+                                         size="sm"
+                                         className="mt-3"
+                                         onClick={() => {
+                                             setIsPlanModalOpen(false); // Close current error modal
+                                             openGenerationModal(selectedRaceIdForPlan); // Re-open generation options modal
+                                         }}
+                                     >
+                                         Try Generating Again?
+                                    </Button>
+                                )}
+                                {/* ------------------------------------------ */} 
                             </div>
                         )}
 
