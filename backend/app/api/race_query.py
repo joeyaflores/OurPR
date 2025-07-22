@@ -52,7 +52,7 @@ async def parse_query_with_llm(query: str) -> ParsedFilters:
 
     # Choose a Gemini model
     # model = genai.GenerativeModel('gemini-pro') # Standard model
-    model = genai.GenerativeModel('gemini-1.5-flash') # Faster model
+    model = genai.GenerativeModel('gemini-2.5-flash-lite') # Faster model
 
     # Get current date
     current_date_str = date.today().isoformat()
