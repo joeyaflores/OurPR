@@ -268,7 +268,7 @@ async def generate_training_plan(
     """
 
     try:
-        model = genai.GenerativeModel('gemini-2.5-flash-preview-04-17')
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
         response = await model.generate_content_async(prompt)
         raw_text = response.text
 
