@@ -881,7 +881,7 @@ async def analyze_completed_workout(
 
     try:
         # Consider using a different model or settings if needed for analysis tasks
-        model = genai.GenerativeModel('gemini-1.5-pro') 
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
         
         # --- Add Generation Config for Brevity --- 
         generation_config = genai.types.GenerationConfig(
